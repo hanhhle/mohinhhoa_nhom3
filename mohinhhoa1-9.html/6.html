@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pneumo-Care | Patient Details Chat Popup</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style> body { font-family: 'Inter', sans-serif; background-color: #f8fafc; } </style>
+</head>
+<body class="flex h-screen overflow-hidden text-gray-800 relative">
+    <aside class="w-64 bg-white border-r border-gray-100 flex flex-col justify-between h-full z-10 relative">
+        <div>
+            <div class="flex items-center gap-2 p-6 mb-4">
+                <i class="fa-solid fa-lungs text-3xl text-red-400"></i><h1 class="text-xl font-semibold text-gray-700">Pneumo-<span class="text-blue-500">Care</span></h1>
+            </div>
+            <nav class="flex flex-col gap-2 px-4">
+                <a href="#" class="flex items-center gap-4 px-4 py-3 text-gray-400 hover:bg-gray-50 rounded-lg"><i class="fa-solid fa-gauge-high w-5 text-center"></i> Dashboard</a>
+                <a href="#" class="flex items-center gap-4 px-4 py-3 bg-blue-50 text-blue-500 rounded-lg font-medium border-l-4 border-blue-500"><i class="fa-solid fa-user-group w-5 text-center"></i> Patients</a>
+                <a href="#" class="flex items-center gap-4 px-4 py-3 text-gray-400 hover:bg-gray-50 rounded-lg"><i class="fa-solid fa-file-lines w-5 text-center"></i> Appointments</a>
+                <a href="#" class="flex items-center gap-4 px-4 py-3 text-gray-400 hover:bg-gray-50 rounded-lg"><i class="fa-solid fa-user-doctor w-5 text-center"></i> Doctors</a>
+                <a href="#" class="flex items-center gap-4 px-4 py-3 text-gray-400 hover:bg-gray-50 rounded-lg"><i class="fa-solid fa-comment-dots w-5 text-center"></i> Messages</a>
+                <a href="#" class="flex items-center gap-4 px-4 py-3 text-gray-400 hover:bg-gray-50 rounded-lg"><i class="fa-solid fa-gear w-5 text-center"></i> Settings</a>
+            </nav>
+        </div>
+        <div class="p-6"><a href="#" class="flex items-center gap-4 text-gray-500 font-medium hover:text-gray-700"><i class="fa-solid fa-right-from-bracket"></i> Logout</a></div>
+    </aside>
+
+    <main class="flex-1 h-full overflow-y-auto p-8 flex flex-col relative">
+        <header class="flex justify-between items-center mb-8">
+            <h2 class="text-2xl font-semibold text-gray-700">Patient Details</h2>
+            <div class="flex items-center gap-6">
+                <div class="relative cursor-pointer"><i class="fa-solid fa-bell text-gray-400 text-xl"></i><div class="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></div></div>
+                <div class="flex items-center gap-3">
+                    <img src="https://randomuser.me/api/portraits/women/44.jpg" class="w-10 h-10 rounded-full border-2 border-blue-100" alt="Admin">
+                    <div><p class="text-sm font-semibold text-gray-700">Nguyen Minh Tien</p><p class="text-xs text-gray-400">Admin</p></div>
+                </div>
+            </div>
+        </header>
+
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 flex-1 flex flex-col p-6">
+            <div class="flex justify-between items-end mb-6 border-b border-gray-100 pb-0">
+                <div class="flex gap-6">
+                    <button class="pb-3 text-sm font-semibold text-blue-500 border-b-2 border-blue-500">Patient Info</button>
+                </div>
+                <button class="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-600 mb-2"><i class="fa-solid fa-plus mr-1"></i> New Patient</button>
+            </div>
+            
+            <div class="flex gap-4 mb-6">
+                <div class="relative">
+                    <i class="fa-solid fa-magnifying-glass absolute left-4 top-2.5 text-gray-400"></i>
+                    <input type="text" placeholder="Search" class="pl-10 pr-4 py-2 bg-gray-50 border-none rounded-full text-sm w-64 focus:ring-2 focus:ring-blue-100 outline-none">
+                </div>
+                <button class="px-4 py-2 bg-white border border-blue-200 text-gray-500 rounded-full text-sm flex items-center gap-2">Filter by Date <i class="fa-regular fa-calendar text-blue-400"></i></button>
+            </div>
+
+            <table class="w-full text-left text-sm">
+                 <thead>
+                    <tr class="text-gray-500 border-b border-gray-100">
+                        <th class="pb-4 font-medium">Patient Name <i class="fa-solid fa-sort ml-1"></i></th>
+                        <th class="pb-4 font-medium">Age <i class="fa-solid fa-sort ml-1"></i></th>
+                        <th class="pb-4 font-medium">Gender <i class="fa-solid fa-sort ml-1"></i></th>
+                        <th class="pb-4 font-medium">Blood Group <i class="fa-solid fa-sort ml-1"></i></th>
+                        <th class="pb-4 font-medium">Phone Number <i class="fa-solid fa-sort ml-1"></i></th>
+                        <th class="pb-4 font-medium">Email ID <i class="fa-solid fa-sort ml-1"></i></th>
+                        <th class="pb-4 font-medium text-center">User Action</th>
+                    </tr>
+                </thead>
+                <tbody class="text-gray-600">
+                    <tr class="border-b border-gray-50">
+                        <td class="py-3 flex items-center gap-3"><img src="https://randomuser.me/api/portraits/women/65.jpg" class="w-8 h-8 rounded-full"> Đỗ Hương Giang</td>
+                        <td class="py-3">32</td><td class="py-3">Female</td><td class="py-3">B RH+</td><td class="py-3">0357 712 345</td><td class="py-3">huonggiang@gmail.com</td>
+                        <td class="py-3 text-center">
+                             <div class="border border-blue-200 rounded-lg py-1 px-2 inline-block bg-blue-50">
+                                <i class="fa-solid fa-ellipsis-vertical text-blue-500"></i>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr class="border-b border-gray-50">
+                        <td class="py-3 flex items-center gap-3"><div class="w-8 h-8 rounded-full bg-blue-100 text-blue-500 flex items-center justify-center font-bold text-xs">EP</div> Đỗ Thị Phương</td>
+                        <td class="py-3">28</td><td class="py-3">Male</td><td class="py-3">AB RH-</td><td class="py-3">0389 123 456</td><td class="py-3">phuongdo22@gmail.com</td>
+                        <td class="py-3 text-center"><div class="border border-blue-200 rounded-lg py-1 px-2 inline-block"><i class="fa-solid fa-ellipsis-vertical text-blue-400"></i></div></td>
+                    </tr>
+                    <tr class="border-b border-gray-50">
+                        <td class="py-3 flex items-center gap-3"><div class="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold text-xs">KR</div> Nguyễn Thị Phương Thuý</td>
+                        <td class="py-3">24</td><td class="py-3">Male</td><td class="py-3">O RH+</td><td class="py-3">0938 123 567</td><td class="py-3">phgthuy128@gmail.com</td>
+                         <td class="py-3 text-center"><div class="border border-blue-200 rounded-lg py-1 px-2 inline-block"><i class="fa-solid fa-ellipsis-vertical text-blue-400"></i></div></td>
+                    </tr>
+                     <tr class="border-b border-gray-50">
+                        <td class="py-3 flex items-center gap-3"><img src="https://randomuser.me/api/portraits/men/32.jpg" class="w-8 h-8 rounded-full"> Lê Hoàng Lan</td>
+                        <td class="py-3">26</td><td class="py-3">Female</td><td class="py-3">O RH+</td><td class="py-3">0389 567 890</td><td class="py-3">hoanglanle123@gmail.com</td>
+                        <td class="py-3 text-center"><div class="border border-blue-200 rounded-lg py-1 px-2 inline-block"><i class="fa-solid fa-ellipsis-vertical text-blue-400"></i></div></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="absolute bottom-10 right-10 w-80 bg-white rounded-t-xl rounded-b-lg shadow-2xl border border-gray-100 flex flex-col z-50 overflow-hidden">
+            <div class="bg-blue-500 text-white p-3 flex justify-between items-center rounded-t-xl">
+                <div class="flex items-center gap-3">
+                    <img src="https://randomuser.me/api/portraits/women/65.jpg" class="w-8 h-8 rounded-full border border-white">
+                    <div>
+                        <p class="font-medium text-sm">Đỗ Hương Giang</p>
+                        <p class="text-xs text-blue-100">Online</p>
+                    </div>
+                </div>
+                <i class="fa-solid fa-ellipsis-vertical cursor-pointer"></i>
+            </div>
+            
+            <div class="p-4 flex flex-col gap-3 h-80 overflow-y-auto bg-gray-50 text-sm">
+                <div class="bg-gray-200 text-gray-700 p-3 rounded-lg rounded-tl-none w-5/6 self-start shadow-sm">
+                    Xin chào, tôi rất muốn đặt lịch khám với bác sĩ Hoàng Anh. Bạn có thể set lịch hẹn giúp tôi không?
+                    <p class="text-[10px] text-gray-500 mt-1 text-left">08:20am</p>
+                </div>
+                
+                <div class="bg-blue-500 text-white p-3 rounded-lg rounded-tr-none w-5/6 self-end shadow-sm">
+                    Bác sĩ có rất nhiều lịch hẹn nên hơi khó ạ. Mình có muốn đổi sang bác sĩ Trang cũng rất tốt không ạ?
+                    <p class="text-[10px] text-blue-200 mt-1 text-right">08:25am</p>
+                </div>
+                
+                <div class="bg-gray-200 text-gray-700 p-3 rounded-lg rounded-tl-none w-5/6 self-start shadow-sm">
+                    Tôi vẫn muốn khám bác sĩ Hoàng Anh thôi bạn check lịch gần nhất giúp mình được ko? Cảm ơn bạn!
+                    <p class="text-[10px] text-gray-500 mt-1 text-left">08:25am</p>
+                </div>
+            </div>
+
+            <div class="p-3 bg-white border-t border-gray-100 flex items-center gap-3">
+                <i class="fa-regular fa-face-smile text-gray-400 text-lg cursor-pointer"></i>
+                <input type="text" placeholder="Type a message" class="flex-1 outline-none text-sm bg-transparent">
+                <i class="fa-solid fa-paperclip text-gray-400 text-lg cursor-pointer"></i>
+                <i class="fa-solid fa-paper-plane text-blue-500 text-lg cursor-pointer"></i>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Patients</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap'); body { font-family: 'Inter', sans-serif; background-color: #f4f7fa; }</style>
+</head>
+<body class="flex h-screen overflow-hidden text-gray-800">
+    <aside class="w-64 bg-white flex flex-col shadow-sm">
+        <div class="h-20 flex items-center px-6 border-b border-gray-100">
+            <i class="fa-solid fa-lungs text-red-400 text-2xl mr-2"></i>
+            <span class="text-xl font-semibold"><span class="text-gray-800">Pneumo</span><span class="text-blue-500">-Care</span></span>
+        </div>
+        <nav class="flex-1 py-6 px-4 space-y-2">
+            <a href="#" class="flex items-center px-4 py-3 text-gray-500 hover:bg-gray-50 rounded-lg"><i class="fa-solid fa-gauge-high w-6"></i> <span>Dashboard</span></a>
+            <a href="#" class="flex items-center px-4 py-3 bg-blue-50 text-blue-600 rounded-lg border-l-4 border-blue-500"><i class="fa-solid fa-user-group w-6"></i> <span class="font-medium">Patients</span></a>
+            <a href="#" class="flex items-center px-4 py-3 text-gray-500 hover:bg-gray-50 rounded-lg"><i class="fa-solid fa-file-lines w-6"></i> <span>Appointments</span></a>
+            <a href="#" class="flex items-center px-4 py-3 text-gray-500 hover:bg-gray-50 rounded-lg"><i class="fa-solid fa-user-doctor w-6"></i> <span>Doctors</span></a>
+            <a href="#" class="flex items-center px-4 py-3 text-gray-500 hover:bg-gray-50 rounded-lg"><i class="fa-solid fa-message w-6"></i> <span>Messages</span></a>
+            <a href="#" class="flex items-center px-4 py-3 text-gray-500 hover:bg-gray-50 rounded-lg"><i class="fa-solid fa-gear w-6"></i> <span>Settings</span></a>
+        </nav>
+    </aside>
+
+    <main class="flex-1 flex flex-col overflow-hidden">
+        <header class="h-20 bg-white/50 backdrop-blur-sm flex items-center justify-between px-8">
+            <h1 class="text-xl font-semibold text-gray-700">Patient Details</h1>
+            <div class="flex items-center space-x-6">
+                <div class="relative text-gray-400"><i class="fa-solid fa-bell text-xl"></i><span class="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span></div>
+                <div class="flex items-center space-x-3"><img src="https://i.pravatar.cc/150?img=5" class="w-10 h-10 rounded-full border-2 border-blue-100"><div><p class="text-sm font-semibold">Nguyen Minh Tien</p><p class="text-xs text-gray-400">Admin</p></div></div>
+            </div>
+        </header>
+
+        <div class="flex-1 p-8 overflow-auto">
+            <div class="bg-white rounded-xl shadow-sm p-6 relative min-h-full flex flex-col">
+                <div class="flex justify-between items-center border-b border-gray-100 mb-6 pb-4">
+                    <span class="font-semibold text-gray-800 border-b-2 border-blue-500 pb-4 -mb-[18px]">Patient Info</span>
+                    <button class="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm"><i class="fa-solid fa-plus mr-2"></i> New Patient</button>
+                </div>
+
+                <div class="flex space-x-4 mb-6">
+                    <div class="relative w-64"><i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-gray-400"></i><input type="text" placeholder="Search" class="bg-gray-50 w-full pl-10 pr-4 py-2 rounded-full text-sm focus:outline-none"></div>
+                    <div class="relative w-48"><input type="text" placeholder="Filter by Date" class="border border-blue-200 text-blue-400 w-full px-4 py-2 rounded-full text-sm focus:outline-none"><i class="fa-regular fa-calendar absolute right-4 top-2.5 text-blue-400"></i></div>
+                </div>
+
+                <table class="w-full text-left text-sm mb-6 flex-1">
+                    <thead class="text-gray-800 border-b border-gray-50 font-semibold">
+                        <tr><th class="py-3">Patient Name <i class="fa-solid fa-sort ml-1 text-gray-400"></i></th><th class="py-3">Age <i class="fa-solid fa-sort ml-1 text-gray-400"></i></th><th class="py-3">Gender <i class="fa-solid fa-sort ml-1 text-gray-400"></i></th><th class="py-3">Blood Group <i class="fa-solid fa-sort ml-1 text-gray-400"></i></th><th class="py-3">Phone Number <i class="fa-solid fa-sort ml-1 text-gray-400"></i></th><th class="py-3">Email ID <i class="fa-solid fa-sort ml-1 text-gray-400"></i></th><th class="py-3 text-center">User Action</th></tr>
+                    </thead>
+                    <tbody class="text-gray-600">
+                        <tr class="border-b border-gray-50"><td class="py-4 flex items-center"><img src="https://i.pravatar.cc/150?img=1" class="w-8 h-8 rounded-full mr-3"> Đỗ Hương Giang</td><td>32</td><td>Female</td><td>B RH+</td><td>0357 712 345</td><td>huonggiang@gmail.com</td><td class="text-center space-x-2"><button class="text-blue-500 border border-blue-500 w-8 h-8 rounded-md"><i class="fa-solid fa-message"></i></button><button class="text-red-400 border border-red-400 w-8 h-8 rounded-md"><i class="fa-solid fa-xmark"></i></button><button class="text-blue-400 border border-blue-400 w-8 h-8 rounded-md"><i class="fa-solid fa-info"></i></button></td></tr>
+                        <tr class="border-b border-gray-50"><td class="py-4 flex items-center"><div class="w-8 h-8 rounded-full bg-blue-100 text-blue-500 flex items-center justify-center mr-3">EP</div> Đỗ Thị Phương</td><td>28</td><td>Male</td><td>AB RH-</td><td>0389 123 456</td><td>phuongdo22@gmail.com</td><td class="text-center space-x-2"><button class="text-blue-500 border border-blue-500 w-8 h-8 rounded-md"><i class="fa-solid fa-message"></i></button><button class="text-red-400 border border-red-400 w-8 h-8 rounded-md"><i class="fa-solid fa-xmark"></i></button><button class="text-blue-400 border border-blue-400 w-8 h-8 rounded-md"><i class="fa-solid fa-info"></i></button></td></tr>
+                        <tr class="border-b border-gray-50"><td class="py-4 flex items-center"><div class="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center mr-3">KR</div> Nguyễn Thị Phương Thuỷ</td><td>24</td><td>Male</td><td>O RH+</td><td>0938 123 567</td><td>phgthuy128@gmail.com</td><td class="text-center space-x-2"><button class="text-blue-500 border border-blue-500 w-8 h-8 rounded-md"><i class="fa-solid fa-message"></i></button><button class="text-red-400 border border-red-400 w-8 h-8 rounded-md"><i class="fa-solid fa-xmark"></i></button><button class="text-blue-400 border border-blue-400 w-8 h-8 rounded-md"><i class="fa-solid fa-info"></i></button></td></tr>
+                        <tr class="border-b border-gray-50"><td class="py-4 flex items-center"><img src="https://i.pravatar.cc/150?img=11" class="w-8 h-8 rounded-full mr-3"> Lê Hoàng Lan</td><td>26</td><td>Female</td><td>O RH+</td><td>0389 567 890</td><td>hoanglanle123@gmail.com</td><td class="text-center space-x-2"><button class="text-blue-500 border border-blue-500 w-8 h-8 rounded-md"><i class="fa-solid fa-message"></i></button><button class="text-red-400 border border-red-400 w-8 h-8 rounded-md"><i class="fa-solid fa-xmark"></i></button><button class="text-blue-400 border border-blue-400 w-8 h-8 rounded-md"><i class="fa-solid fa-info"></i></button></td></tr>
+                        <tr class="border-b border-gray-50"><td class="py-4 flex items-center"><img src="https://i.pravatar.cc/150?img=12" class="w-8 h-8 rounded-full mr-3"> Trần Thị Khánh Huyền</td><td>77</td><td>Female</td><td>AB RH+</td><td>0913 333 333</td><td>huyentran31322@gmail.com</td><td class="text-center space-x-2"><button class="text-blue-500 border border-blue-500 w-8 h-8 rounded-md"><i class="fa-solid fa-message"></i></button><button class="text-red-400 border border-red-400 w-8 h-8 rounded-md"><i class="fa-solid fa-xmark"></i></button><button class="text-blue-400 border border-blue-400 w-8 h-8 rounded-md"><i class="fa-solid fa-info"></i></button></td></tr>
+                        <tr class="border-b border-gray-50"><td class="py-4 flex items-center"><img src="https://i.pravatar.cc/150?img=13" class="w-8 h-8 rounded-full mr-3"> Ngô Xuân Đức</td><td>77</td><td>Male</td><td>O RH+</td><td>0938 120 803</td><td>ngoduc111@gmail.com</td><td class="text-center space-x-2"><button class="text-blue-500 border border-blue-500 w-8 h-8 rounded-md"><i class="fa-solid fa-message"></i></button><button class="text-red-400 border border-red-400 w-8 h-8 rounded-md"><i class="fa-solid fa-xmark"></i></button><button class="text-blue-400 border border-blue-400 w-8 h-8 rounded-md"><i class="fa-solid fa-info"></i></button></td></tr>
+                        <tr><td class="py-4 flex items-center"><img src="https://i.pravatar.cc/150?img=14" class="w-8 h-8 rounded-full mr-3"> Bùi Huy Hoàng</td><td>55</td><td>Male</td><td>A RH-</td><td>0124 208 128</td><td>hoangbeo22@gmail.com</td><td class="text-center space-x-2"><button class="text-blue-500 border border-blue-500 w-8 h-8 rounded-md"><i class="fa-solid fa-message"></i></button><button class="text-red-400 border border-red-400 w-8 h-8 rounded-md"><i class="fa-solid fa-xmark"></i></button><button class="text-blue-400 border border-blue-400 w-8 h-8 rounded-md"><i class="fa-solid fa-info"></i></button></td></tr>
+                    </tbody>
+                </table>
+                <div class="h-2 bg-gray-200 rounded-full mb-4 mx-4 w-[60%]"><div class="h-2 bg-gray-400 rounded-full w-full"></div></div>
+                <div class="flex justify-end items-center space-x-2 text-sm mt-auto">
+                    <span class="text-gray-400 mr-2">Previous</span>
+                    <button class="w-8 h-8 bg-blue-500 text-white rounded-md">1</button>
+                    <button class="w-8 h-8 text-blue-500 hover:bg-blue-50 rounded-md">2</button>
+                    <button class="w-8 h-8 text-blue-500 hover:bg-blue-50 rounded-md">3</button>
+                    <button class="w-8 h-8 text-blue-500 hover:bg-blue-50 rounded-md">4</button>
+                    <span class="text-blue-500 ml-2 cursor-pointer">Next</span>
+                </div>
+            </div>
+        </div>
+    </main>
+</body>
+</html>
