@@ -1,0 +1,158 @@
+<!DOCTYPE html> 
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Patient | Doctors</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style> body { font-family: 'Inter', sans-serif; background-color: #f0f6ff; } </style>
+</head>
+<body class="flex h-screen overflow-hidden text-gray-800">
+    <aside class="w-64 bg-white border-r border-gray-100 flex flex-col justify-between h-full z-10 shadow-sm relative shrink-0">
+        <div>
+            <div class="flex items-center gap-2 p-6 mb-4">
+                <i class="fa-solid fa-lungs text-3xl text-red-400"></i>
+                <h1 class="text-xl font-semibold text-gray-700">Pneumo-<span class="text-blue-500">Care</span></h1>
+            </div>
+            <nav class="flex flex-col gap-2 px-4">
+                <a href="#" class="flex items-center gap-4 px-4 py-3 text-gray-400 hover:bg-gray-50 rounded-lg transition-colors">
+                    <i class="fa-solid fa-gauge-high w-5 text-center"></i> Dashboard
+                </a>
+                <a href="#" class="flex items-center gap-4 px-4 py-3 text-gray-400 hover:bg-gray-50 rounded-lg transition-colors">
+                    <i class="fa-solid fa-user-group w-5 text-center"></i> Report
+                </a>
+                <a href="#" class="flex items-center gap-4 px-4 py-3 text-gray-400 hover:bg-gray-50 rounded-lg transition-colors">
+                    <i class="fa-solid fa-file-lines w-5 text-center"></i> Appointments
+                </a>
+                <a href="#" class="flex items-center gap-4 px-4 py-3 bg-blue-50 text-blue-500 rounded-lg font-medium border-l-4 border-blue-500">
+                    <i class="fa-solid fa-user-doctor w-5 text-center"></i> Doctors
+                </a>
+                <a href="#" class="flex items-center gap-4 px-4 py-3 text-gray-400 hover:bg-gray-50 rounded-lg transition-colors">
+                    <i class="fa-solid fa-comment-dots w-5 text-center"></i> Messages
+                </a>
+            </nav>
+        </div>
+        <div class="p-6">
+            <a href="#" class="flex items-center gap-4 text-gray-500 font-medium hover:text-gray-700">
+                <i class="fa-solid fa-right-from-bracket"></i> Logout
+            </a>
+        </div>
+    </aside>
+
+    <main class="flex-1 h-full overflow-y-auto p-8">
+        <header class="flex justify-between items-center mb-8">
+            <h2 class="text-2xl font-semibold text-gray-700">Doctor's Information</h2>
+            <div class="flex items-center gap-6">
+                <div class="relative cursor-pointer">
+                    <i class="fa-solid fa-bell text-gray-400 text-xl"></i>
+                    <div class="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <img src="https://randomuser.me/api/portraits/women/65.jpg" class="w-10 h-10 rounded-full border-2 border-blue-100" alt="Patient">
+                    <div>
+                        <p class="text-sm font-semibold text-gray-700">Do Huong Giang</p>
+                        <p class="text-xs text-gray-400">Patient</p>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-12 gap-6 h-[calc(100%-80px)]">
+            <div class="col-span-4 bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col h-full overflow-hidden">
+                <h3 class="font-semibold text-gray-700 mb-4 text-lg">Doctors</h3>
+                <div class="flex-1 overflow-y-auto pr-2 space-y-4 custom-scrollbar">
+                    
+                    <div class="border-2 border-blue-400 rounded-xl p-4 flex flex-col items-center text-center shadow-sm relative">
+                        <img src="https://randomuser.me/api/portraits/men/44.jpg" class="w-16 h-16 rounded-full mb-3 object-cover shadow-sm">
+                        <h4 class="font-semibold text-gray-800">Le Hoang Anh</h4>
+                        <p class="text-xs text-gray-400 mb-3 pb-3 border-b border-gray-100 w-full">Pulmonologist</p>
+                        <button class="text-sm text-blue-500 font-medium hover:text-blue-600 w-full">View More</button>
+                    </div>
+
+                    <div class="border border-gray-100 rounded-xl p-4 flex flex-col items-center text-center hover:shadow-md transition-shadow">
+                        <img src="https://randomuser.me/api/portraits/men/45.jpg" class="w-16 h-16 rounded-full mb-3 object-cover shadow-sm">
+                        <h4 class="font-semibold text-gray-800">Pham Le Quynh Trang</h4>
+                        <p class="text-xs text-gray-400 mb-3 pb-3 border-b border-gray-100 w-full">Pulmonologist</p>
+                        <button class="text-sm text-blue-500 font-medium hover:text-blue-600 w-full">View More</button>
+                    </div>
+
+                    <div class="border border-gray-100 rounded-xl p-4 flex flex-col items-center text-center hover:shadow-md transition-shadow">
+                        <img src="https://randomuser.me/api/portraits/men/46.jpg" class="w-16 h-16 rounded-full mb-3 object-cover shadow-sm">
+                        <h4 class="font-semibold text-gray-800">Pham Huong Giang</h4>
+                        <p class="text-xs text-gray-400 mb-3 pb-3 border-b border-gray-100 w-full">Pulmonologist</p>
+                        <button class="text-sm text-blue-500 font-medium hover:text-blue-600 w-full">View More</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-span-8 bg-white p-8 rounded-xl shadow-sm border border-gray-100 h-full overflow-y-auto">
+                <div class="flex justify-between items-start mb-6 border-b border-gray-100 pb-6">
+                    <div>
+                        <h2 class="text-3xl font-bold text-gray-800 mb-2">Le Hoang Anh</h2>
+                        <p class="text-sm text-gray-500 leading-relaxed max-w-lg">
+                            <span class="font-semibold text-blue-500">Speciality :</span> Specialty: Dr. Hoang Anh specializes in treating various lung diseases and performing several procedures
+                        </p>
+                    </div>
+                    <div class="flex flex-col items-end gap-4">
+                        <div class="flex text-yellow-400 text-sm gap-1 items-center">
+                            <i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i>
+                            <span class="text-gray-600 font-medium ml-1">5/5</span>
+                        </div>
+                        <button class="bg-blue-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-600 transition-colors shadow-sm">
+                            Appointment Schedule
+                        </button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-8 mb-6">
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-800 mb-3">Education</h3>
+                        <div class="mb-4">
+                            <h4 class="text-blue-500 font-medium text-sm">Undergraduate :</h4>
+                            <p class="text-sm text-gray-500 mt-1">University of Notre Dame, South Bend, IN.</p>
+                        </div>
+                        <div>
+                            <h4 class="text-blue-500 font-medium text-sm">MEDICAL:</h4>
+                            <p class="text-sm text-gray-500 mt-1">Harvard Medical School, Boston, MA.</p>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-800 mb-3">Training</h3>
+                        <div>
+                            <h4 class="text-blue-500 font-medium text-sm">Internal Medicine Residency</h4>
+                            <p class="text-sm text-gray-500 mt-1 leading-relaxed">Internal Medicine Residency: Massachusetts General Hospital, Boston, MA.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-6">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Affiliations</h3>
+                    <h4 class="text-blue-500 font-medium text-sm mb-2">Professional Affiliations</h4>
+                    <ul class="list-disc list-inside text-sm text-gray-500 space-y-1.5 ml-1">
+                        <li>Fellow of the American College of Chest Physicians (FCCP)</li>
+                        <li>Member of the American Thoracic Society (ATS)</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">About Dr. Hoang Anh</h3>
+                    <p class="text-sm text-gray-500 leading-relaxed text-justify">
+                        Dr. Hoang Anh is a Pulmonologist and Critical Care specialist with extensive expertise. She completed his medical degree at Harvard Medical School, followed by rigorous internal medicine training at Massachusetts General Hospital. To further hone his specialized skills, she completed elite fellowships in Pulmonary Medicine at the Mayo Clinic and Interventional Pulmonology at MD Anderson Cancer Center.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </main>
+    
+    <style>
+        /* Custom scrollbar to match the design style */
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+    </style>
+</body>
+</html>
