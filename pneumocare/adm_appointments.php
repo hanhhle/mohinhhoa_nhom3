@@ -85,8 +85,8 @@ function calculateAge($birthDate) {
             <h1 class="text-xl font-semibold text-gray-700">Manage Appointments</h1>
             <div class="flex items-center space-x-3">
                 <img src="<?php echo $adminAvatar; ?>" 
-                    class="w-10 h-10 rounded-full border-2 border-blue-100 object-cover" 
-                    alt="Admin Avatar">
+                        class="w-10 h-10 rounded-full border-2 border-blue-100 object-cover" 
+                        alt="Admin Avatar">
                 <div>
                     <p class="text-sm font-semibold text-gray-700"><?php echo htmlspecialchars($adminName); ?></p>
                     <p class="text-xs text-gray-400">System Administrator</p>
@@ -130,21 +130,56 @@ function calculateAge($birthDate) {
                         <?php if (empty($appointments)): ?>
                             <tr><td colspan="6" class="py-10 text-center text-gray-400 italic">Không tìm thấy lịch hẹn nào.</td></tr>
                         <?php else: ?>
-                            <?php foreach ($appointments as $row): ?>
-                            <tr class="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                                <td class="py-4 font-medium text-blue-600"><?php echo date('h:i A', strtotime($row['appointment_time'])); ?></td>
-                                <td class="py-4"><?php echo date('d/m/Y', strtotime($row['appointment_date'])); ?></td>
-                                <td class="flex items-center py-4">
-                                    <img src="<?php echo $row['p_avatar'] ?: 'https://ui-avatars.com/api/?name='.urlencode($row['p_name']).'&background=random'; ?>" class="w-8 h-8 rounded-full mr-3 object-cover shadow-sm">
-                                    <span class="font-medium"><?php echo htmlspecialchars($row['p_name']); ?></span>
-                                </td>
-                                <td class="text-center py-4"><?php echo calculateAge($row['date_of_birth']); ?></td>
-                                <td class="py-4">Dr. <?php echo htmlspecialchars($row['d_name']); ?></td>
-                                <td class="py-4">
-                                    <span class="text-blue-500 cursor-pointer mr-4 hover:underline text-xs font-semibold uppercase">Reschedule</span>
-                                    <button class="bg-red-50 text-red-500 w-8 h-8 rounded-md hover:bg-red-500 hover:text-white transition-all"><i class="fa-solid fa-xmark"></i></button>
-                                </td>
-                            </tr>
+                            <?php foreach ($appointments as $app): ?>
+                                <?php 
+                                    // Format lại thời gian và ngày tháng cho đẹp
+                                    $timeFormatted = date("h:i A", strtotime($app['appointment_time']));
+                                    $dateFormatted = date("d/m/Y", strtotime($app['appointment_date']));
+                                    $age = calculateAge($app['date_of_birth']);
+                                    
+                                    // Tạo Avatar chữ cái (VD: Van Cuong -> VC)
+                                    $nameParts = explode(' ', trim($app['p_name']));
+                                    $initials = strtoupper(substr($nameParts[0], 0, 1));
+                                    if (count($nameParts) > 1) {
+                                        $initials .= strtoupper(substr(end($nameParts), 0, 1));
+                                    }
+                                ?>
+                                <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                                    
+                                    <td class="py-4 text-blue-600 font-semibold text-sm">
+                                        <?php echo $timeFormatted; ?>
+                                    </td>
+
+                                    <td class="py-4 text-gray-500 text-sm">
+                                        <?php echo $dateFormatted; ?>
+                                    </td>
+
+                                    <td class="py-4">
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-8 h-8 rounded-full bg-[#c0ca33] text-white flex items-center justify-center text-xs font-bold shadow-sm">
+                                                <?php echo $initials; ?>
+                                            </div>
+                                            <span class="text-gray-800 font-medium text-sm"><?php echo htmlspecialchars($app['p_name']); ?></span>
+                                        </div>
+                                    </td>
+
+                                    <td class="py-4 text-gray-500 text-sm text-center">
+                                        <?php echo $age; ?>
+                                    </td>
+
+                                    <td class="py-4 text-gray-600 text-sm">
+                                        <?php echo htmlspecialchars($app['d_name']); ?> </td>
+
+                                    <td class="py-4">
+                                        <div class="flex items-center gap-4">
+                                            <button class="text-blue-500 text-xs font-bold tracking-wide hover:underline">RESCHEDULE</button>
+                                            <button class="w-7 h-7 flex items-center justify-center bg-red-50 text-red-500 rounded-md hover:bg-red-100 transition-colors">
+                                                <i class="fa-solid fa-xmark"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+
+                                </tr>
                             <?php endforeach; ?>
                         <?php endif; ?>
                     </tbody>

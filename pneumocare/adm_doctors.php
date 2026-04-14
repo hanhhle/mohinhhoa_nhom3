@@ -19,7 +19,7 @@ $current_doc = null;
 try {
     // Lấy danh sách tất cả bác sĩ để hiện ở cột bên trái
     $doctors = $pdo->query("SELECT u.full_name, u.avatar_url, dp.* FROM Users u JOIN Doctor_Profiles dp ON u.user_id = dp.doctor_id WHERE u.role = 'Doctor'")->fetchAll();
-
+    
     // Xác định bác sĩ đang được chọn để xem chi tiết
     $selected_id = isset($_GET['id']) ? $_GET['id'] : null;
     if (!$selected_id && !empty($doctors)) {
@@ -133,7 +133,7 @@ try {
                     </div>
                     <div>
                         <h3 class="font-semibold text-[#003366] text-lg mb-4">Training</h3>
-                        <p class="text-gray-500 text-sm leading-relaxed"><?php echo htmlspecialchars($current_doc['training_info']); ?></p>
+                        <p class="text-gray-500 text-sm leading-relaxed"><?php echo htmlspecialchars($current_doc['training']); ?></p>
                     </div>
                 </div>
 
@@ -142,7 +142,7 @@ try {
                 <div>
                     <h3 class="font-semibold text-[#003366] text-lg mb-4">About the Doctor</h3>
                     <p class="text-gray-500 text-sm leading-relaxed text-justify">
-                        <?php echo nl2br(htmlspecialchars($current_doc['biography'])); ?>
+                        <?php echo nl2br(htmlspecialchars($current_doc['bio'])); ?>
                     </p>
                 </div>
             </div>
