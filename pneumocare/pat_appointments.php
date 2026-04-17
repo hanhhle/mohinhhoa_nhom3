@@ -1,221 +1,327 @@
 <?php
+// ==========================================
+// TÊN FILE: pat_appointments.php
+// CHỨC NĂNG: Quản lý lịch khám (Đặt mới, Dời lịch, Hủy lịch, Thanh toán)
+// ==========================================
 session_start();
 require 'db.php';
+ini_set('display_errors', 1); ini_set('display_startup_errors', 1); error_reporting(E_ALL);
+
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Patient') { header("Location: login.php"); exit(); }
 $patientId = $_SESSION['user_id'];
 $patientName = $_SESSION['name'];
 $patientAvatar = (!empty($_SESSION['avatar']) && $_SESSION['avatar'] != 'default.png') ? $_SESSION['avatar'] : 'img/default_patient.png';
 
 $appointments = [];
+$rescheduleData = null;
+$payData = null; // Biến mới để lưu thông tin cần thanh toán
+$booked_slots = [];
+$msg = "";
+
+// 1. LẤY THÔNG TIN ĐỂ RESCHEDULE HOẶC PAYMENT
+$reschedule_id = isset($_GET['reschedule_id']) ? $_GET['reschedule_id'] : null;
+$selected_date = isset($_GET['new_date']) ? $_GET['new_date'] : null;
+$pay_id = isset($_GET['pay_id']) ? $_GET['pay_id'] : null;
+
 try {
-    $stmt = $pdo->prepare("SELECT a.*, u_d.full_name as doctor_name FROM Appointments a JOIN Users u_d ON a.doctor_id = u_d.user_id WHERE a.patient_id = ? AND a.status = 'Scheduled' ORDER BY a.appointment_date ASC, a.appointment_time ASC");
+    // 2. XỬ LÝ HỦY LỊCH KHÁM (CANCEL)
+    if (isset($_GET['cancel_id'])) {
+        $c_id = $_GET['cancel_id'];
+        $stmtCancel = $pdo->prepare("UPDATE Appointments SET status = 'Cancelled' WHERE appointment_id = ? AND patient_id = ?");
+        $stmtCancel->execute([$c_id, $patientId]);
+        $msg = "<div class='bg-red-50 text-red-600 p-4 rounded-xl mb-6 border border-red-200 text-sm font-medium flex items-center gap-2'><i class='fa-solid fa-circle-xmark'></i> Appointment has been cancelled.</div>";
+    }
+
+    // 3. XỬ LÝ CẬP NHẬT RESCHEDULE (POST)
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_reschedule'])) {
+        $r_id = $_POST['reschedule_appt_id'];
+        $n_date = $_POST['new_date'];
+        $n_time = $_POST['new_time'];
+
+        $stmtUp = $pdo->prepare("UPDATE Appointments SET appointment_date = ?, appointment_time = ? WHERE appointment_id = ? AND patient_id = ?");
+        $stmtUp->execute([$n_date, $n_time, $r_id, $patientId]);
+        $msg = "<div class='bg-green-50 text-green-600 p-4 rounded-xl mb-6 border border-green-200 text-sm font-medium flex items-center gap-2'><i class='fa-solid fa-circle-check'></i> Appointment successfully rescheduled!</div>";
+        $reschedule_id = null;
+    }
+
+    // XỬ LÝ XÁC NHẬN CHỌN "TIỀN MẶT"
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pay_cash'])) {
+        $p_id = $_POST['payment_appt_id'];
+        // Đánh dấu là sẽ trả tiền mặt (Giữ nguyên Unpaid để lễ tân thu tiền lúc đến)
+        $stmtCash = $pdo->prepare("UPDATE Appointments SET payment_method = 'Tiền mặt' WHERE appointment_id = ? AND patient_id = ?");
+        $stmtCash->execute([$p_id, $patientId]);
+        $msg = "<div class='bg-blue-50 text-blue-600 p-4 rounded-xl mb-6 border border-blue-200 text-sm font-medium flex items-center gap-2'><i class='fa-solid fa-circle-info'></i> Payment method set to Cash. Please pay at the clinic.</div>";
+        $pay_id = null;
+    }
+
+    // 4. LẤY DỮ LIỆU ĐỂ HIỂN THỊ MODAL RESCHEDULE
+    if ($reschedule_id) {
+        $stmtRes = $pdo->prepare("SELECT a.*, u.full_name as doctor_name FROM Appointments a JOIN Users u ON a.doctor_id = u.user_id WHERE a.appointment_id = ? AND a.patient_id = ?");
+        $stmtRes->execute([$reschedule_id, $patientId]);
+        $rescheduleData = $stmtRes->fetch();
+
+        if ($rescheduleData) {
+            if (!$selected_date) $selected_date = $rescheduleData['appointment_date'];
+            // Lấy giờ bận của bác sĩ
+            $stmtCheck = $pdo->prepare("SELECT appointment_time FROM Appointments WHERE doctor_id = ? AND appointment_date = ? AND status != 'Cancelled' AND appointment_id != ?");
+            $stmtCheck->execute([$rescheduleData['doctor_id'], $selected_date, $reschedule_id]);
+            while ($row = $stmtCheck->fetch()) { $booked_slots[] = date('H:i', strtotime($row['appointment_time'])); }
+        }
+    }
+
+    // LẤY DỮ LIỆU ĐỂ HIỂN THỊ MODAL THANH TOÁN
+    if ($pay_id) {
+        $stmtPay = $pdo->prepare("SELECT a.*, u.full_name as doctor_name, dp.consultation_fee FROM Appointments a JOIN Users u ON a.doctor_id = u.user_id JOIN Doctor_Profiles dp ON u.user_id = dp.doctor_id WHERE a.appointment_id = ? AND a.patient_id = ?");
+        $stmtPay->execute([$pay_id, $patientId]);
+        $payData = $stmtPay->fetch();
+    }
+
+    // 5. LẤY DANH SÁCH LỊCH KHÁM ĐANG HOẠT ĐỘNG
+    $stmt = $pdo->prepare("
+        SELECT a.*, u_d.full_name as doctor_name 
+        FROM Appointments a 
+        JOIN Users u_d ON a.doctor_id = u_d.user_id 
+        WHERE a.patient_id = ? AND a.status IN ('Scheduled', 'In Progress') 
+        ORDER BY a.appointment_date ASC, a.appointment_time ASC
+    ");
     $stmt->execute([$patientId]);
     $appointments = $stmt->fetchAll();
-} catch (PDOException $e) {}
+
+} catch (PDOException $e) { $msg = "Error: " . $e->getMessage(); }
+
+$available_slots = ['09:00', '10:30', '13:30', '15:00'];
 ?>
 <!DOCTYPE html>
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <title>Pneumo-Care | Appointments - New</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pneumo-Care | Appointments</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', sans-serif; background: #f0f4f8; color: #1a2a3a; }
-
-        .navbar { background: #fff; border-bottom: 1px solid #e0e8f0; padding: 0 32px; height: 64px; display: flex; align-items: center; justify-content: space-between; }
-        .nav-logo { display: flex; align-items: center; gap: 8px; font-size: 20px; font-weight: 700; color: #1a2a3a; }
-        .nav-logo span { color: #3b82f6; }
-        .nav-links { display: flex; align-items: center; gap: 28px; }
-        .nav-links a { text-decoration: none; color: #6b7280; font-size: 15px; }
-        .btn-login { background: none; border: none; font-size: 15px; font-weight: 600; cursor: pointer; color: #1a2a3a; }
-        .btn-signup { background: #6b7280; color: #fff; border: none; padding: 10px 22px; border-radius: 8px; font-size: 15px; cursor: pointer; }
-
-        .layout { display: flex; min-height: calc(100vh - 64px); }
-        .sidebar { width: 220px; background: #fff; border-right: 1px solid #e0e8f0; padding: 0; display: flex; flex-direction: column; min-height: 100vh; }
-        .sidebar-logo { display: flex; align-items: center; gap: 8px; padding: 18px 20px 18px; font-size: 17px; font-weight: 700; border-bottom: 1px solid #e0e8f0; }
-        .sidebar-logo span { color: #3b82f6; }
-        .sidebar-menu { flex: 1; padding-top: 8px; }
-        .sidebar-item { display: flex; align-items: center; gap: 10px; padding: 11px 20px; color: #6b7280; font-size: 14px; cursor: pointer; text-decoration: none; transition: all 0.15s; }
-        .sidebar-item:hover { background: #f0f4f8; color: #1a2a3a; }
-        .sidebar-item.active { background: #eff6ff; color: #3b82f6; border-right: 3px solid #3b82f6; font-weight: 600; }
-        .sidebar-item svg { width: 18px; height: 18px; flex-shrink: 0; }
-        .sidebar-logout { padding: 13px 20px; display: flex; align-items: center; gap: 10px; color: #6b7280; font-size: 14px; cursor: pointer; border-top: 1px solid #e0e8f0; }
-        .main-content { flex: 1; padding: 28px 32px; }
-        .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
-        .topbar h1 { font-size: 22px; font-weight: 600; }
-        .topbar-right { display: flex; align-items: center; gap: 16px; }
-        .notif-bell { position: relative; cursor: pointer; }
-        .notif-dot { position: absolute; top: -2px; right: -2px; width: 8px; height: 8px; background: #ef4444; border-radius: 50%; }
-        .user-info { display: flex; align-items: center; gap: 10px; cursor: pointer; }
-        .user-name { font-size: 14px; font-weight: 600; }
-        .user-role { font-size: 12px; color: #6b7280; }
-        .user-avatar { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; }
-
-        .signup-bg { background: #eef3fb; min-height: calc(100vh - 64px); padding: 40px 20px; }
-        .step-bar { display: flex; align-items: center; justify-content: center; padding-bottom: 32px; }
-        .step { display: flex; flex-direction: column; align-items: center; gap: 8px; }
-        .step-circle { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px; color: #fff; }
-        .step-circle.orange { background: #f59e0b; }
-        .step-circle.blue { background: #3b82f6; }
-        .step-line { width: 200px; height: 3px; background: #3b82f6; margin-top: -20px; }
-        .step-label { font-size: 13px; font-weight: 600; color: #3b82f6; }
-
-        .form-card { background: #fff; border-radius: 16px; padding: 32px 40px; max-width: 720px; margin: 0 auto; box-shadow: 0 2px 16px rgba(0,0,0,0.06); }
-        .form-card h2 { text-align: center; font-size: 20px; font-weight: 700; color: #3b82f6; margin-bottom: 24px; }
-        .form-group { margin-bottom: 16px; }
-        .form-group label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: #374151; }
-        .form-input { width: 100%; padding: 12px 16px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 14px; background: #f9fafb; outline: none; transition: border 0.2s; font-family: inherit; }
-        .form-input:focus { border-color: #3b82f6; background: #fff; }
-        .form-input-wrap { position: relative; }
-        .form-input-wrap .eye-icon { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #9ca3af; }
-        .form-select { width: 100%; padding: 12px 16px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 14px; background: #f9fafb; outline: none; font-family: inherit; }
-        .form-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-        .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-        .btn-primary { background: #3b82f6; color: #fff; border: none; padding: 12px 40px; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; display: block; margin: 24px auto 0; min-width: 140px; }
-        .btn-primary:hover { background: #2563eb; }
-        .btn-dark { background: #1e293b; color: #f59e0b; border: none; padding: 13px 40px; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; display: block; margin: 24px auto 0; min-width: 200px; }
-        .back-title { font-size: 18px; font-weight: 700; color: #1a2a3a; display: flex; align-items: center; gap: 6px; cursor: pointer; margin-bottom: 16px; }
-
-        .dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .dash-card { background: #fff; border-radius: 14px; padding: 20px; border: 1px solid #e0e8f0; }
-        .dash-card-title { font-size: 15px; font-weight: 600; color: #374151; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
-        .activity-tile { border-radius: 10px; padding: 14px 18px; display: flex; align-items: center; gap: 16px; margin-bottom: 10px; }
-        .activity-tile:last-child { margin-bottom: 0; }
-        .tile-num { font-size: 26px; font-weight: 700; color: #1a2a3a; }
-        .tile-label { font-size: 13px; color: #6b7280; }
-        .donut-wrap { display: flex; align-items: center; gap: 24px; }
-        .legend-item { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 8px; }
-        .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-        .fee-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-        .fee-row:last-child { margin-bottom: 0; }
-        .fee-avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
-        .fee-name { font-size: 13px; font-weight: 600; }
-        .fee-status { font-size: 12px; color: #f59e0b; }
-        .btn-fee { background: #3b82f6; color: #fff; border: none; padding: 6px 14px; border-radius: 8px; font-size: 13px; cursor: pointer; white-space: nowrap; margin-left: auto; }
-
-        .filter-bar { background: #fff; border-radius: 10px; padding: 14px 20px; border: 1px solid #e0e8f0; display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
-        .filter-select { border: 1px solid #e0e8f0; border-radius: 8px; padding: 8px 14px; font-size: 14px; background: #fff; min-width: 200px; font-family: inherit; }
-        .search-count { display: flex; align-items: center; gap: 8px; font-size: 14px; background: #eff6ff; border-radius: 8px; padding: 8px 14px; border: 1px solid #bfdbfe; color: #374151; }
-
-        .doctor-row { background: #fff; border: 1px solid #e0e8f0; border-radius: 10px; padding: 16px 20px; display: flex; align-items: center; gap: 16px; margin-bottom: 8px; }
-        .doctor-avatar { width: 52px; height: 52px; border-radius: 50%; background: #c7d2fe; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #3730a3; font-size: 16px; flex-shrink: 0; }
-        .doctor-name { font-size: 16px; font-weight: 700; color: #1e3a5f; }
-        .doctor-spec { font-size: 13px; color: #3b82f6; }
-        .doctor-spec span { color: #6b7280; }
-        .doctor-fee-section { text-align: right; margin-right: 12px; }
-        .fee-label-sm { font-size: 12px; color: #6b7280; }
-        .fee-amount { font-size: 16px; font-weight: 700; color: #f59e0b; }
-        .btn-pick { background: #3b82f6; color: #fff; border: none; padding: 10px 22px; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; }
-
-        .schedule-block { background: #f8fafc; border: 1px solid #e0e8f0; border-top: none; border-radius: 0 0 10px 10px; padding: 16px 20px; margin-top: -8px; margin-bottom: 8px; }
-        .date-pills { display: flex; gap: 10px; margin: 10px 0 14px; }
-        .date-pill { padding: 8px 16px; border-radius: 8px; border: 1px solid #e0e8f0; cursor: pointer; text-align: center; background: #fff; }
-        .date-pill.active { background: #1e3a5f; color: #fff; border-color: #1e3a5f; }
-        .date-pill .day { font-size: 11px; font-weight: 600; }
-        .date-pill .dt { font-size: 14px; font-weight: 700; }
-        .slot-row { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
-        .slot-label { font-size: 12px; color: #6b7280; width: 64px; }
-        .slot-pill { padding: 6px 14px; border-radius: 6px; border: 1px solid #e0e8f0; font-size: 13px; cursor: pointer; background: #fff; }
-        .slot-pill:hover { border-color: #3b82f6; }
-
-        .summary-card { background: #fff; border-radius: 14px; padding: 28px 32px; border: 1px solid #e0e8f0; max-width: 860px; margin: 0 auto; }
-        .summary-title { text-align: center; font-size: 24px; font-weight: 700; color: #1e3a5f; margin-bottom: 20px; }
-        .summary-inner { border: 1.5px solid #3b82f6; border-radius: 10px; overflow: hidden; }
-        .summary-doctor-row { padding: 16px 20px; display: flex; align-items: center; gap: 14px; border-bottom: 1px solid #e0e8f0; }
-        .summary-info-rows { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
-        .summary-row { display: flex; align-items: flex-start; gap: 12px; font-size: 14px; }
-        .symptom-textarea { width: 100%; border: 1px solid #e0e8f0; border-radius: 8px; padding: 12px; font-size: 14px; color: #9ca3af; min-height: 80px; font-family: inherit; resize: vertical; }
-
-        .table-card { background: #fff; border-radius: 14px; padding: 20px 24px; border: 1px solid #e0e8f0; }
-        .tab-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-        .tab-links { display: flex; border-bottom: 2px solid #e0e8f0; }
-        .tab-link { padding: 10px 20px; font-size: 14px; font-weight: 600; color: #9ca3af; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; text-decoration: none; }
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #1f2937; }
+        
+        .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .topbar-wrapper { padding: 32px 40px 0 40px; }
+        .topbar { height: 72px; background: #ffffff; border: 1px solid #f3f4f6; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 24px; }
+        .topbar h1 { font-size: 22px; font-weight: 600; color: #1f2937; margin: 0; }
+        .content-area { padding: 0 40px 40px 40px; flex: 1; overflow-y: auto; }
+        
+        .table-card { background: #fff; border-radius: 14px; padding: 24px 32px; border: 1px solid #f3f4f6; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .tab-link { padding: 12px 24px; font-size: 14px; font-weight: 600; color: #9ca3af; text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: 0.2s; }
         .tab-link.active { color: #3b82f6; border-bottom-color: #3b82f6; }
-        .btn-new { background: #3b82f6; color: #fff; border: none; padding: 9px 16px; border-radius: 8px; font-size: 14px; cursor: pointer; display: flex; align-items: center; gap: 6px; }
-        .search-row { display: flex; gap: 12px; margin-bottom: 16px; }
-        .search-box { display: flex; align-items: center; gap: 8px; border: 1px solid #e0e8f0; border-radius: 8px; padding: 8px 14px; background: #fff; }
-        .search-box input { border: none; outline: none; font-size: 14px; background: transparent; font-family: inherit; }
-        .filter-date-btn { display: flex; align-items: center; gap: 8px; border: 1px solid #e0e8f0; border-radius: 20px; padding: 8px 14px; font-size: 14px; cursor: pointer; background: #fff; }
+        
         .data-table { width: 100%; border-collapse: collapse; }
-        .data-table th { font-size: 13px; color: #6b7280; font-weight: 600; padding: 10px 12px; border-bottom: 1px solid #e0e8f0; text-align: left; }
-        .data-table td { padding: 12px 12px; font-size: 14px; border-bottom: 1px solid #f3f4f6; }
-        .data-table tr:last-child td { border-bottom: none; }
-        .patient-cell { display: flex; align-items: center; gap: 10px; }
-        .link-blue { color: #3b82f6; cursor: pointer; text-decoration: none; }
-        .link-green { color: #22c55e; font-weight: 600; }
-        .btn-reschedule { background: none; border: none; color: #3b82f6; font-size: 13px; cursor: pointer; }
-        .btn-icon { width: 28px; height: 28px; border-radius: 50%; border: 1px solid #e0e8f0; background: #fff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; }
-        .pagination { display: flex; align-items: center; gap: 6px; justify-content: flex-end; margin-top: 16px; }
-        .page-btn { width: 30px; height: 30px; border-radius: 6px; border: 1px solid #e0e8f0; background: #fff; cursor: pointer; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; }
-        .page-btn.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
-        .page-btn-text { background: none; border: none; color: #6b7280; font-size: 13px; cursor: pointer; }
+        .data-table th { font-size: 12px; color: #6b7280; font-weight: 600; padding: 14px 16px; border-bottom: 1px solid #e5e7eb; text-align: left; text-transform: uppercase; letter-spacing: 0.5px; }
+        .data-table td { padding: 16px 16px; font-size: 14px; border-bottom: 1px solid #f3f4f6; color: #374151; }
+        
+        .btn-reschedule { border: 1px solid #e5e7eb; color: #374151; font-size: 13px; font-weight: 500; padding: 6px 14px; border-radius: 6px; transition: 0.2s; text-decoration: none; }
+        .btn-reschedule:hover { background: #f3f4f6; }
+        .btn-cancel { border: 1px solid #fee2e2; color: #ef4444; font-size: 13px; font-weight: 500; padding: 6px 14px; border-radius: 6px; transition: 0.2s; text-decoration: none; }
+        .btn-cancel:hover { background: #fef2f2; border-color: #fca5a5; }
+        .btn-pay { border: 1px solid #bfdbfe; color: #2563eb; background: #eff6ff; font-size: 13px; font-weight: 600; padding: 6px 14px; border-radius: 6px; transition: 0.2s; text-decoration: none; }
+        .btn-pay:hover { background: #3b82f6; color: #fff; }
 
-        .detail-header { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #e0e8f0; padding-bottom: 12px; margin-bottom: 20px; }
-        .detail-tab-active { font-size: 14px; font-weight: 700; color: #3b82f6; border-bottom: 2px solid #3b82f6; padding-bottom: 13px; margin-bottom: -14px; }
-        .appt-code { font-size: 13px; color: #6b7280; }
-        .appt-code strong { color: #1a2a3a; }
-        .badge-approved { color: #22c55e; font-weight: 700; font-size: 14px; }
-        .detail-title { font-size: 22px; font-weight: 700; margin-bottom: 24px; }
-        .appt-card{background:#fff;border-radius:14px;padding:28px 32px;border:1px solid #e0e8f0;}
-        .appt-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+        .sidebar-active { background-color: #eff6ff; color: #2563eb; border-left: 4px solid #2563eb; font-weight: 600; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
     </style>
 </head>
-<body>
-<div class="layout">
-  <div class="sidebar">
-    <div class="sidebar-logo"><svg viewBox="0 0 32 32" fill="none" width="26" height="26"><ellipse cx="10" cy="18" rx="7" ry="10" fill="#f87171" transform="rotate(-10 10 18)"/><ellipse cx="22" cy="18" rx="7" ry="10" fill="#fca5a5" transform="rotate(10 22 18)"/></svg>Pneumo-<span>Care</span></div>
-    <nav class="sidebar-menu">
-      <a class="sidebar-item" href="pat_dashboard.php"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18"><rect x="3" y="3" width="7" height="7" rx="1" stroke-width="2"/><rect x="14" y="3" width="7" height="7" rx="1" stroke-width="2"/><rect x="3" y="14" width="7" height="7" rx="1" stroke-width="2"/><rect x="14" y="14" width="7" height="7" rx="1" stroke-width="2"/></svg> Dashboard</a>
-      <a class="sidebar-item" href="#"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18"><path d="M9 17v-2m3 2v-4m3 4v-6M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-width="2"/></svg> Report</a>
-      <a class="sidebar-item active" href="pat_appointments.php"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" stroke-width="2"/></svg> Appointments</a>
-      <a class="sidebar-item" href="#"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" stroke-width="2"/></svg> Doctors</a>
-      <a class="sidebar-item" href="#"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18"><path d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" stroke-width="2"/></svg> Messages</a>
-      <a class="sidebar-item" href="#"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18"><circle cx="12" cy="12" r="3" stroke-width="2"/></svg> Settings</a>
-    </nav>
-    <div class="sidebar-logout" onclick="location.href='logout.php'"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" stroke-width="2"/></svg> Logout</div>
-  </div>
-
-  <div class="main-content">
-    <div class="topbar">
-      <h1>Appointments</h1>
-      <div class="topbar-right">
-        <div class="notif-bell"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="22" height="22"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" stroke-width="2"/></svg><div class="notif-dot"></div></div>
-        <div class="user-info">
-          <div style="text-align:right"><div class="user-name"><?php echo htmlspecialchars($patientName); ?></div><div class="user-role">Patient</div></div>
-          <img src="<?php echo $patientAvatar; ?>" class="user-avatar" style="object-fit:cover;">
+<body class="flex h-screen overflow-hidden">
+<div class="flex w-full h-full relative">
+  
+    <aside class="w-64 bg-white border-r border-gray-200 flex flex-col h-full flex-shrink-0 z-10 shadow-sm">
+        <div class="flex items-center gap-2 p-6 border-b">
+            <i class="fa-solid fa-lungs text-3xl text-red-400"></i>
+            <h1 class="text-xl font-semibold text-gray-700">Pneumo-<span class="text-blue-500">Care</span></h1>
         </div>
-      </div>
-    </div>
 
-    <div class="table-card">
-      <div class="tab-row">
-        <div class="tab-links">
-          <a class="tab-link active" href="pat_appointments.php">NEW APPOINTMENTS</a>
-          <a class="tab-link" href="pat_appointments_history.php">COMPLETED APPOINTMENTS</a>
+        <nav class="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
+            <a href="pat_dashboard.php" class="flex items-center gap-4 px-4 py-3 text-gray-500 hover:bg-gray-50 hover:text-gray-800 rounded-xl transition-colors font-medium">
+                <i class="fa-solid fa-gauge-high w-5 text-center text-xl"></i><span>Dashboard</span>
+            </a>
+            <a href="pat_report.php" class="flex items-center gap-4 px-4 py-3 text-gray-500 hover:bg-gray-50 hover:text-gray-800 rounded-xl transition-colors font-medium">
+                <i class="fa-solid fa-file-medical w-5 text-center text-xl"></i><span>Report</span>
+            </a>
+            <a href="pat_appointments.php" class="sidebar-active flex items-center gap-4 px-4 py-3 rounded-xl font-semibold transition-colors">
+                <i class="fa-solid fa-calendar-check w-5 text-center text-xl"></i><span>Appointments</span>
+            </a>
+            <a href="pat_doctors.php" class="flex items-center gap-4 px-4 py-3 text-gray-500 hover:bg-gray-50 hover:text-gray-800 rounded-xl transition-colors font-medium">
+                <i class="fa-solid fa-user-doctor w-5 text-center text-xl"></i><span>Doctors</span>
+            </a>
+            <a href="pat_messages.php" class="flex items-center gap-4 px-4 py-3 text-gray-500 hover:bg-gray-50 hover:text-gray-800 rounded-xl transition-colors font-medium">
+                <i class="fa-solid fa-comment-dots w-5 text-center text-xl"></i><span>Messages</span>
+            </a>
+        </nav>
+
+        <div class="p-6 border-t mt-auto border-gray-100">
+            <a href="logout.php" class="flex items-center gap-4 text-gray-500 hover:text-red-500 transition-colors font-medium">
+                <i class="fa-solid fa-right-from-bracket text-xl"></i><span>Logout</span>
+            </a>
         </div>
-        <button class="btn-new" onclick="location.href='pat_book_step1.php'">New Appointment</button>
-      </div>
+    </aside>
 
-      <table class="data-table">
-        <thead><tr><th>Time</th><th>Date</th><th>Doctor</th><th>Payment Method</th><th>Action</th></tr></thead>
-        <tbody>
-          <?php if(empty($appointments)): ?>
-              <tr><td colspan="5" style="text-align:center; padding:20px; color:#9ca3af;">You have no upcoming appointments.</td></tr>
-          <?php else: ?>
-              <?php foreach($appointments as $appt): ?>
-              <tr>
-                <td style="color:#3b82f6; font-weight:600;"><?php echo date('h:i A', strtotime($appt['appointment_time'])); ?></td>
-                <td><?php echo date('d/m/Y', strtotime($appt['appointment_date'])); ?></td>
-                <td>Dr. <?php echo htmlspecialchars($appt['doctor_name']); ?></td>
-                <td><?php echo $appt['fee_status'] == 'Paid' ? '<span class="link-green">Paid</span>' : '<span style="color:#f59e0b">Unpaid</span>'; ?></td>
-                <td><button class="btn-reschedule">Reschedule</button></td>
-              </tr>
-              <?php endforeach; ?>
-          <?php endif; ?>
-        </tbody>
-      </table>
+    <main class="main-content">
+        <div class="topbar-wrapper">
+            <header class="topbar">
+                <h1>Appointments</h1>
+                <div class="flex items-center gap-6">
+                    <div class="flex items-center gap-3"><div class="text-right"><p class="text-sm font-semibold"><?php echo htmlspecialchars($patientName); ?></p><p class="text-xs text-gray-500">Patient</p></div><img src="<?php echo $patientAvatar; ?>" class="w-10 h-10 rounded-full border border-gray-200 shadow-sm object-cover"></div>
+                </div>
+            </header>
+        </div>
+
+        <div class="content-area">
+            <?php echo $msg; ?>
+            <div class="table-card">
+                <div class="flex justify-between items-center mb-6">
+                    <div class="flex border-b-2 border-gray-100">
+                        <a class="tab-link active" href="pat_appointments.php">NEW APPOINTMENTS</a>
+                        <a class="tab-link" href="pat_appointments_history.php">COMPLETED APPOINTMENTS</a>
+                    </div>
+                    <button class="bg-blue-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2" onclick="location.href='pat_book_step1.php'"><i class="fa-solid fa-plus"></i> New Appointment</button>
+                </div>
+
+                <table class="data-table">
+                    <thead><tr><th class="w-[15%]">Time</th><th class="w-[20%]">Date</th><th class="w-[25%]">Doctor</th><th class="w-[15%]">Fee Status</th><th class="w-[25%]">Action</th></tr></thead>
+                    <tbody>
+                    <?php if(empty($appointments)): ?>
+                        <tr><td colspan="5" class="text-center py-10 text-gray-400 italic">No upcoming appointments.</td></tr>
+                    <?php else: ?>
+                        <?php foreach($appointments as $appt): ?>
+                        <tr>
+                            <td class="font-semibold text-gray-800"><?php echo date('h:i A', strtotime($appt['appointment_time'])); ?></td>
+                            <td><?php echo date('d/m/Y', strtotime($appt['appointment_date'])); ?></td>
+                            <td class="font-medium text-gray-700">Dr. <?php echo htmlspecialchars($appt['doctor_name']); ?></td>
+                            <td>
+                                <?php if($appt['fee_status'] == 'Unpaid'): ?>
+                                    <span class="bg-yellow-50 text-yellow-600 border border-yellow-200 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider">Unpaid</span>
+                                <?php else: ?>
+                                    <span class="bg-green-50 text-green-600 border border-green-200 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider">Paid</span>
+                                <?php endif; ?>
+                            </td>
+                            <td class="flex items-center gap-3">
+                                <?php if($appt['fee_status'] == 'Unpaid'): ?>
+                                    <a href="?pay_id=<?php echo $appt['appointment_id']; ?>" class="btn-pay">Pay Now</a>
+                                <?php endif; ?>
+                                
+                                <?php if($appt['status'] == 'Scheduled'): ?>
+                                    <a href="?reschedule_id=<?php echo $appt['appointment_id']; ?>" class="btn-reschedule">Reschedule</a>
+                                    <a href="?cancel_id=<?php echo $appt['appointment_id']; ?>" onclick="return confirm('Are you sure you want to cancel?')" class="btn-cancel">Cancel</a>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <?php if($payData): ?>
+    <div class="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-50">
+        <div class="bg-white rounded-2xl shadow-2xl w-[450px] overflow-hidden">
+            <div class="bg-blue-600 px-6 py-4 flex items-center justify-between text-white">
+                <h3 class="font-semibold text-lg flex items-center gap-2"><i class="fa-solid fa-credit-card"></i> Payment Method</h3>
+                <a href="pat_appointments.php" class="text-white/80 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></a>
+            </div>
+            
+            <div class="p-8">
+                <div class="text-center mb-6 border-b border-gray-100 pb-6">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Total Amount</p>
+                    <p class="text-4xl font-extrabold text-blue-600"><?php echo number_format($payData['consultation_fee']); ?> <span class="text-lg text-gray-500 font-medium">VND</span></p>
+                    <p class="text-sm font-medium text-gray-600 mt-2">Dr. <?php echo htmlspecialchars($payData['doctor_name']); ?> - <?php echo date('d/m/Y', strtotime($payData['appointment_date'])); ?></p>
+                </div>
+
+                <p class="text-sm font-bold text-gray-700 mb-4 uppercase tracking-wide">Select how you want to pay:</p>
+                
+                <div class="space-y-3">
+                    <button onclick="location.href='pat_payment.php?appt_id=<?php echo $payData['appointment_id']; ?>'" class="w-full flex items-center justify-between p-4 border-2 border-gray-200 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all group">
+                        <div class="flex items-center gap-4">
+                            <div class="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm text-blue-500 text-lg border border-gray-100"><i class="fa-solid fa-qrcode"></i></div>
+                            <div class="text-left">
+                                <p class="font-bold text-gray-800">Online Payment</p>
+                                <p class="text-xs font-medium text-gray-500">Momo, ZaloPay, Bank Transfer</p>
+                            </div>
+                        </div>
+                        <i class="fa-solid fa-chevron-right text-gray-300 group-hover:text-blue-500"></i>
+                    </button>
+
+                    <form method="POST">
+                        <input type="hidden" name="payment_appt_id" value="<?php echo $payData['appointment_id']; ?>">
+                        <button type="submit" name="pay_cash" onclick="return confirm('You will pay cash at the clinic. Confirm?')" class="w-full flex items-center justify-between p-4 border-2 border-gray-200 rounded-xl hover:border-green-500 hover:bg-green-50 transition-all group">
+                            <div class="flex items-center gap-4">
+                                <div class="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm text-green-500 text-lg border border-gray-100"><i class="fa-solid fa-money-bill-wave"></i></div>
+                                <div class="text-left">
+                                    <p class="font-bold text-gray-800">Pay Cash at Clinic</p>
+                                    <p class="text-xs font-medium text-gray-500">Pay directly at the reception desk</p>
+                                </div>
+                            </div>
+                            <i class="fa-solid fa-chevron-right text-gray-300 group-hover:text-green-500"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
     </div>
-  </div>
+    <?php endif; ?>
+
+    <?php if($rescheduleData): ?>
+    <div class="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-50">
+        <div class="bg-white rounded-2xl shadow-2xl w-[500px] overflow-hidden">
+            <div class="bg-blue-600 px-6 py-4 flex items-center justify-between text-white">
+                <h3 class="font-semibold text-lg">Reschedule Appointment</h3>
+                <a href="pat_appointments.php" class="text-white/80 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></a>
+            </div>
+            <form method="POST" class="p-8">
+                <input type="hidden" name="reschedule_appt_id" value="<?php echo $rescheduleData['appointment_id']; ?>">
+                <div class="mb-6 bg-blue-50 border border-blue-100 rounded-xl p-4">
+                    <p class="text-xs font-bold text-blue-600 uppercase mb-1">Doctor</p>
+                    <p class="font-bold text-[#003366]">Dr. <?php echo htmlspecialchars($rescheduleData['doctor_name']); ?></p>
+                </div>
+                <div class="mb-6">
+                    <label class="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">1. Pick New Date</label>
+                    <input type="date" name="new_date" id="rescheduleDate" required min="<?php echo date('Y-m-d'); ?>" 
+                           value="<?php echo $selected_date; ?>"
+                           onchange="window.location.href='?reschedule_id=<?php echo $reschedule_id; ?>&new_date=' + this.value"
+                           class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:border-blue-500 outline-none bg-gray-50 font-medium">
+                </div>
+                <div class="mb-8">
+                    <label class="block text-sm font-bold text-gray-700 mb-3 uppercase tracking-wide">2. Select Available Time</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <?php foreach($available_slots as $time): ?>
+                            <?php 
+                            $is_booked = in_array($time, $booked_slots); 
+                            $is_current = (date('H:i', strtotime($rescheduleData['appointment_time'])) == $time && $selected_date == $rescheduleData['appointment_date']);
+                            ?>
+                            <label class="relative cursor-pointer">
+                                <input type="radio" name="new_time" value="<?php echo $time; ?>:00" class="peer hidden" 
+                                       <?php echo $is_booked ? 'disabled' : ''; ?> <?php echo $is_current ? 'checked' : ''; ?> required>
+                                <div class="border rounded-xl py-3 text-center text-sm font-semibold transition-all
+                                    <?php if($is_booked): ?> bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed opacity-60
+                                    <?php else: ?> bg-white border-gray-200 text-gray-700 hover:border-blue-300 peer-checked:bg-blue-600 peer-checked:border-blue-600 peer-checked:text-white
+                                    <?php endif; ?>">
+                                    <?php if($is_booked): ?><i class="fa-solid fa-lock text-[10px] mr-1"></i><?php endif; ?>
+                                    <?php echo date('h:i A', strtotime($time)); ?>
+                                </div>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+                <div class="flex gap-3 pt-4 border-t border-gray-100">
+                    <a href="pat_appointments.php" class="flex-1 text-center py-3.5 border border-gray-200 rounded-xl text-gray-500 font-bold hover:bg-gray-50 transition-colors uppercase text-xs">Cancel</a>
+                    <button type="submit" name="confirm_reschedule" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3.5 rounded-xl font-bold transition-all shadow-md uppercase text-xs">Confirm Change</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <?php endif; ?>
+
 </div>
 </body>
 </html>

@@ -1,231 +1,272 @@
 <?php
 session_start();
 require 'db.php';
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Patient' || !isset($_SESSION['booking_info'])) { header("Location: pat_book_step1.php"); exit(); }
+ini_set('display_errors', 1); ini_set('display_startup_errors', 1); error_reporting(E_ALL);
+
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Patient' || !isset($_SESSION['booking_info'])) { 
+    header("Location: pat_book_step1.php"); 
+    exit(); 
+}
 
 $patientName = $_SESSION['name'];
 $patientAvatar = (!empty($_SESSION['avatar']) && $_SESSION['avatar'] != 'default.png') ? $_SESSION['avatar'] : 'img/default_patient.png';
 
+$expanded_doc = isset($_GET['expand_doc']) ? $_GET['expand_doc'] : null;
+$selected_date = isset($_GET['select_date']) ? $_GET['select_date'] : date('Y-m-d');
+
+// 1. Lấy danh sách bác sĩ
 $doctors = [];
 try {
     $doctors = $pdo->query("SELECT u.user_id, u.full_name, u.avatar_url, dp.speciality, dp.consultation_fee FROM Users u JOIN Doctor_Profiles dp ON u.user_id = dp.doctor_id WHERE u.role = 'Doctor'")->fetchAll();
 } catch (PDOException $e) {}
 
+// 2. Xử lý khi bệnh nhân CHỌN xong Bác sĩ & Ngày giờ (Lưu vào Session và chuyển sang Step 3)
 if (isset($_GET['doc_id']) && isset($_GET['date']) && isset($_GET['time'])) {
     $_SESSION['booking_info']['doctor_id'] = $_GET['doc_id'];
     $_SESSION['booking_info']['appt_date'] = $_GET['date'];
     $_SESSION['booking_info']['appt_time'] = $_GET['time'];
-    foreach($doctors as $d) { if($d['user_id'] == $_GET['doc_id']) { $_SESSION['booking_info']['doctor_name'] = $d['full_name']; break; } }
-    header("Location: pat_book_step3.php"); exit();
+    foreach($doctors as $d) { 
+        if($d['user_id'] == $_GET['doc_id']) { 
+            $_SESSION['booking_info']['doctor_name'] = $d['full_name']; 
+            break; 
+        } 
+    }
+    header("Location: pat_book_step3.php"); 
+    exit();
 }
 
-$expanded_doc = isset($_GET['expand_doc']) ? $_GET['expand_doc'] : null;
-$selected_date = isset($_GET['select_date']) ? $_GET['select_date'] : date('Y-m-d');
+// 3. LOGIC KIỂM TRA LỊCH BẬN CỦA BÁC SĨ TỪ DATABASE
+$booked_slots = [];
+if ($expanded_doc) {
+    try {
+        // Lấy tất cả các lịch đã được đặt (trừ những lịch đã bị Hủy)
+        $stmtSlots = $pdo->prepare("SELECT appointment_date, appointment_time FROM Appointments WHERE doctor_id = ? AND status != 'Cancelled' AND appointment_date >= CURDATE()");
+        $stmtSlots->execute([$expanded_doc]);
+        while ($row = $stmtSlots->fetch()) {
+            // Định dạng lại giờ thành HH:mm để dễ so sánh
+            $booked_slots[$row['appointment_date']][] = date('H:i', strtotime($row['appointment_time']));
+        }
+    } catch (PDOException $e) {}
+}
+
+// Định nghĩa các khung giờ khám mặc định
+$morning_slots = ['09:00', '10:30'];
+$afternoon_slots = ['13:30', '15:00'];
 ?>
+
 <!DOCTYPE html>
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pneumo-Care | Patient - Pick Doctor</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', sans-serif; background: #f0f4f8; color: #1a2a3a; }
+        body { font-family: 'Inter', sans-serif; background-color: #f4f7fa; color: #1f2937; }
 
-        .navbar { background: #fff; border-bottom: 1px solid #e0e8f0; padding: 0 32px; height: 64px; display: flex; align-items: center; justify-content: space-between; }
-        .nav-logo { display: flex; align-items: center; gap: 8px; font-size: 20px; font-weight: 700; color: #1a2a3a; }
-        .nav-logo span { color: #3b82f6; }
-        .nav-links { display: flex; align-items: center; gap: 28px; }
-        .nav-links a { text-decoration: none; color: #6b7280; font-size: 15px; }
-        .btn-login { background: none; border: none; font-size: 15px; font-weight: 600; cursor: pointer; color: #1a2a3a; }
-        .btn-signup { background: #6b7280; color: #fff; border: none; padding: 10px 22px; border-radius: 8px; font-size: 15px; cursor: pointer; }
+        .layout { display: flex; min-height: 100vh; overflow: hidden; }
+        
+        /* SIDEBAR CHUẨN ĐỒNG BỘ */
+        .sidebar { width: 260px; background: #ffffff; border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; min-height: 100vh; flex-shrink: 0; z-index: 10; }
+        .sidebar-active { background-color: #eff6ff; color: #2563eb; border-left: 4px solid #2563eb; font-weight: 600; }
 
-        .layout { display: flex; min-height: calc(100vh - 64px); }
-        .sidebar { width: 220px; background: #fff; border-right: 1px solid #e0e8f0; padding: 0; display: flex; flex-direction: column; min-height: 100vh; }
-        .sidebar-logo { display: flex; align-items: center; gap: 8px; padding: 18px 20px 18px; font-size: 17px; font-weight: 700; border-bottom: 1px solid #e0e8f0; }
-        .sidebar-logo span { color: #3b82f6; }
-        .sidebar-menu { flex: 1; padding-top: 8px; }
-        .sidebar-item { display: flex; align-items: center; gap: 10px; padding: 11px 20px; color: #6b7280; font-size: 14px; cursor: pointer; text-decoration: none; transition: all 0.15s; }
-        .sidebar-item:hover { background: #f0f4f8; color: #1a2a3a; }
-        .sidebar-item.active { background: #eff6ff; color: #3b82f6; border-right: 3px solid #3b82f6; font-weight: 600; }
-        .sidebar-item svg { width: 18px; height: 18px; flex-shrink: 0; }
-        .sidebar-logout { padding: 13px 20px; display: flex; align-items: center; gap: 10px; color: #6b7280; font-size: 14px; cursor: pointer; border-top: 1px solid #e0e8f0; }
-        .main-content { flex: 1; padding: 28px 32px; }
-        .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
-        .topbar h1 { font-size: 22px; font-weight: 600; }
-        .topbar-right { display: flex; align-items: center; gap: 16px; }
-        .notif-bell { position: relative; cursor: pointer; }
-        .notif-dot { position: absolute; top: -2px; right: -2px; width: 8px; height: 8px; background: #ef4444; border-radius: 50%; }
-        .user-info { display: flex; align-items: center; gap: 10px; cursor: pointer; }
-        .user-name { font-size: 14px; font-weight: 600; }
-        .user-role { font-size: 12px; color: #6b7280; }
-        .user-avatar { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; }
+        /* MAIN CONTENT */
+        .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .topbar-wrapper { padding: 32px 40px 0 40px; }
+        .topbar { 
+            height: 72px; background: #ffffff; border: 1px solid #f3f4f6; 
+            display: flex; align-items: center; justify-content: space-between; 
+            padding: 0 24px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
+            margin-bottom: 24px;
+        }
+        .topbar h1 { font-size: 22px; font-weight: 600; color: #1f2937; margin: 0; }
+        .content-area { padding: 0 40px 40px 40px; flex: 1; overflow-y: auto; }
 
-        .signup-bg { background: #eef3fb; min-height: calc(100vh - 64px); padding: 40px 20px; }
-        .step-bar { display: flex; align-items: center; justify-content: center; padding-bottom: 32px; }
-        .step { display: flex; flex-direction: column; align-items: center; gap: 8px; }
-        .step-circle { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px; color: #fff; }
-        .step-circle.orange { background: #f59e0b; }
-        .step-circle.blue { background: #3b82f6; }
-        .step-line { width: 200px; height: 3px; background: #3b82f6; margin-top: -20px; }
-        .step-label { font-size: 13px; font-weight: 600; color: #3b82f6; }
-
-        .form-card { background: #fff; border-radius: 16px; padding: 32px 40px; max-width: 720px; margin: 0 auto; box-shadow: 0 2px 16px rgba(0,0,0,0.06); }
-        .form-card h2 { text-align: center; font-size: 20px; font-weight: 700; color: #3b82f6; margin-bottom: 24px; }
-        .form-group { margin-bottom: 16px; }
-        .form-group label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: #374151; }
-        .form-input { width: 100%; padding: 12px 16px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 14px; background: #f9fafb; outline: none; transition: border 0.2s; font-family: inherit; }
-        .form-input:focus { border-color: #3b82f6; background: #fff; }
-        .form-input-wrap { position: relative; }
-        .form-input-wrap .eye-icon { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #9ca3af; }
-        .form-select { width: 100%; padding: 12px 16px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 14px; background: #f9fafb; outline: none; font-family: inherit; }
-        .form-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-        .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-        .btn-primary { background: #3b82f6; color: #fff; border: none; padding: 12px 40px; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; display: block; margin: 24px auto 0; min-width: 140px; }
-        .btn-primary:hover { background: #2563eb; }
-        .btn-dark { background: #1e293b; color: #f59e0b; border: none; padding: 13px 40px; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; display: block; margin: 24px auto 0; min-width: 200px; }
-        .back-title { font-size: 18px; font-weight: 700; color: #1a2a3a; display: flex; align-items: center; gap: 6px; cursor: pointer; margin-bottom: 16px; }
-
-        .dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .dash-card { background: #fff; border-radius: 14px; padding: 20px; border: 1px solid #e0e8f0; }
-        .dash-card-title { font-size: 15px; font-weight: 600; color: #374151; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
-        .activity-tile { border-radius: 10px; padding: 14px 18px; display: flex; align-items: center; gap: 16px; margin-bottom: 10px; }
-        .activity-tile:last-child { margin-bottom: 0; }
-        .tile-num { font-size: 26px; font-weight: 700; color: #1a2a3a; }
-        .tile-label { font-size: 13px; color: #6b7280; }
-        .donut-wrap { display: flex; align-items: center; gap: 24px; }
-        .legend-item { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 8px; }
-        .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-        .fee-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-        .fee-row:last-child { margin-bottom: 0; }
-        .fee-avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
-        .fee-name { font-size: 13px; font-weight: 600; }
-        .fee-status { font-size: 12px; color: #f59e0b; }
-        .btn-fee { background: #3b82f6; color: #fff; border: none; padding: 6px 14px; border-radius: 8px; font-size: 13px; cursor: pointer; white-space: nowrap; margin-left: auto; }
-
-        .filter-bar { background: #fff; border-radius: 10px; padding: 14px 20px; border: 1px solid #e0e8f0; display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
-        .filter-select { border: 1px solid #e0e8f0; border-radius: 8px; padding: 8px 14px; font-size: 14px; background: #fff; min-width: 200px; font-family: inherit; }
-        .search-count { display: flex; align-items: center; gap: 8px; font-size: 14px; background: #eff6ff; border-radius: 8px; padding: 8px 14px; border: 1px solid #bfdbfe; color: #374151; }
-
-        .doctor-row { background: #fff; border: 1px solid #e0e8f0; border-radius: 10px; padding: 16px 20px; display: flex; align-items: center; gap: 16px; margin-bottom: 8px; }
-        .doctor-avatar { width: 52px; height: 52px; border-radius: 50%; background: #c7d2fe; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #3730a3; font-size: 16px; flex-shrink: 0; }
-        .doctor-name { font-size: 16px; font-weight: 700; color: #1e3a5f; }
-        .doctor-spec { font-size: 13px; color: #3b82f6; }
-        .doctor-spec span { color: #6b7280; }
-        .doctor-fee-section { text-align: right; margin-right: 12px; }
-        .fee-label-sm { font-size: 12px; color: #6b7280; }
-        .fee-amount { font-size: 16px; font-weight: 700; color: #f59e0b; }
-        .btn-pick { background: #3b82f6; color: #fff; border: none; padding: 10px 22px; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; }
-
-        .schedule-block { background: #f8fafc; border: 1px solid #e0e8f0; border-top: none; border-radius: 0 0 10px 10px; padding: 16px 20px; margin-top: -8px; margin-bottom: 8px; }
-        .date-pills { display: flex; gap: 10px; margin: 10px 0 14px; }
-        .date-pill { padding: 8px 16px; border-radius: 8px; border: 1px solid #e0e8f0; cursor: pointer; text-align: center; background: #fff; }
-        .date-pill.active { background: #1e3a5f; color: #fff; border-color: #1e3a5f; }
-        .date-pill .day { font-size: 11px; font-weight: 600; }
-        .date-pill .dt { font-size: 14px; font-weight: 700; }
-        .slot-row { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
-        .slot-label { font-size: 12px; color: #6b7280; width: 64px; }
-        .slot-pill { padding: 6px 14px; border-radius: 6px; border: 1px solid #e0e8f0; font-size: 13px; cursor: pointer; background: #fff; }
-        .slot-pill:hover { border-color: #3b82f6; }
-
-        .summary-card { background: #fff; border-radius: 14px; padding: 28px 32px; border: 1px solid #e0e8f0; max-width: 860px; margin: 0 auto; }
-        .summary-title { text-align: center; font-size: 24px; font-weight: 700; color: #1e3a5f; margin-bottom: 20px; }
-        .summary-inner { border: 1.5px solid #3b82f6; border-radius: 10px; overflow: hidden; }
-        .summary-doctor-row { padding: 16px 20px; display: flex; align-items: center; gap: 14px; border-bottom: 1px solid #e0e8f0; }
-        .summary-info-rows { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
-        .summary-row { display: flex; align-items: flex-start; gap: 12px; font-size: 14px; }
-        .symptom-textarea { width: 100%; border: 1px solid #e0e8f0; border-radius: 8px; padding: 12px; font-size: 14px; color: #9ca3af; min-height: 80px; font-family: inherit; resize: vertical; }
-
-        .table-card { background: #fff; border-radius: 14px; padding: 20px 24px; border: 1px solid #e0e8f0; }
-        .tab-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-        .tab-links { display: flex; border-bottom: 2px solid #e0e8f0; }
-        .tab-link { padding: 10px 20px; font-size: 14px; font-weight: 600; color: #9ca3af; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; text-decoration: none; }
-        .tab-link.active { color: #3b82f6; border-bottom-color: #3b82f6; }
-        .btn-new { background: #3b82f6; color: #fff; border: none; padding: 9px 16px; border-radius: 8px; font-size: 14px; cursor: pointer; display: flex; align-items: center; gap: 6px; }
-        .search-row { display: flex; gap: 12px; margin-bottom: 16px; }
-        .search-box { display: flex; align-items: center; gap: 8px; border: 1px solid #e0e8f0; border-radius: 8px; padding: 8px 14px; background: #fff; }
-        .search-box input { border: none; outline: none; font-size: 14px; background: transparent; font-family: inherit; }
-        .filter-date-btn { display: flex; align-items: center; gap: 8px; border: 1px solid #e0e8f0; border-radius: 20px; padding: 8px 14px; font-size: 14px; cursor: pointer; background: #fff; }
-        .data-table { width: 100%; border-collapse: collapse; }
-        .data-table th { font-size: 13px; color: #6b7280; font-weight: 600; padding: 10px 12px; border-bottom: 1px solid #e0e8f0; text-align: left; }
-        .data-table td { padding: 12px 12px; font-size: 14px; border-bottom: 1px solid #f3f4f6; }
-        .data-table tr:last-child td { border-bottom: none; }
-        .patient-cell { display: flex; align-items: center; gap: 10px; }
-        .link-blue { color: #3b82f6; cursor: pointer; text-decoration: none; }
-        .link-green { color: #22c55e; font-weight: 600; }
-        .btn-reschedule { background: none; border: none; color: #3b82f6; font-size: 13px; cursor: pointer; }
-        .btn-icon { width: 28px; height: 28px; border-radius: 50%; border: 1px solid #e0e8f0; background: #fff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; }
-        .pagination { display: flex; align-items: center; gap: 6px; justify-content: flex-end; margin-top: 16px; }
-        .page-btn { width: 30px; height: 30px; border-radius: 6px; border: 1px solid #e0e8f0; background: #fff; cursor: pointer; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; }
-        .page-btn.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
-        .page-btn-text { background: none; border: none; color: #6b7280; font-size: 13px; cursor: pointer; }
-
-        .detail-header { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #e0e8f0; padding-bottom: 12px; margin-bottom: 20px; }
-        .detail-tab-active { font-size: 14px; font-weight: 700; color: #3b82f6; border-bottom: 2px solid #3b82f6; padding-bottom: 13px; margin-bottom: -14px; }
-        .appt-code { font-size: 13px; color: #6b7280; }
-        .appt-code strong { color: #1a2a3a; }
-        .badge-approved { color: #22c55e; font-weight: 700; font-size: 14px; }
-        .detail-title { font-size: 22px; font-weight: 700; margin-bottom: 24px; }
-        .doctor-row-expanded{border:1.5px solid #3b82f6;border-bottom:none;border-radius:10px 10px 0 0;}
-        .schedule-block{background:#f8fafc;border:1.5px solid #3b82f6;border-top:none;border-radius:0 0 10px 10px;padding:16px 20px;margin-bottom:12px;}
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
     </style>
 </head>
-<body>
-<div class="layout">
-  <div class="sidebar">
-    <div class="sidebar-logo"><svg viewBox="0 0 32 32" fill="none" width="26" height="26"><ellipse cx="10" cy="18" rx="7" ry="10" fill="#f87171" transform="rotate(-10 10 18)"/><ellipse cx="22" cy="18" rx="7" ry="10" fill="#fca5a5" transform="rotate(10 22 18)"/></svg>Pneumo-<span>Care</span></div>
-    <nav class="sidebar-menu">
-      <a class="sidebar-item" href="pat_dashboard.php"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18"><rect x="3" y="3" width="7" height="7" rx="1" stroke-width="2"/><rect x="14" y="3" width="7" height="7" rx="1" stroke-width="2"/><rect x="3" y="14" width="7" height="7" rx="1" stroke-width="2"/><rect x="14" y="14" width="7" height="7" rx="1" stroke-width="2"/></svg> Dashboard</a>
-      <a class="sidebar-item" href="#"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18"><path d="M9 17v-2m3 2v-4m3 4v-6M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-width="2"/></svg> Report</a>
-      <a class="sidebar-item active" href="pat_appointments.php"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" stroke-width="2"/></svg> Appointments</a>
-      <a class="sidebar-item" href="#"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" stroke-width="2"/></svg> Doctors</a>
-      <a class="sidebar-item" href="#"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18"><path d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" stroke-width="2"/></svg> Messages</a>
-      <a class="sidebar-item" href="#"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18"><circle cx="12" cy="12" r="3" stroke-width="2"/></svg> Settings</a>
-    </nav>
-    <div class="sidebar-logout" onclick="location.href='logout.php'"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" stroke-width="2"/></svg> Logout</div>
-  </div>
-
-  <div class="main-content">
-    <div class="topbar">
-      <h1>Pick Doctor & Schedule</h1>
-      <div class="topbar-right">
-        <div class="notif-bell"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="22" height="22"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" stroke-width="2"/></svg><div class="notif-dot"></div></div>
-        <div class="user-info">
-          <div style="text-align:right"><div class="user-name"><?php echo htmlspecialchars($patientName); ?></div><div class="user-role">Patient</div></div>
-          <img src="<?php echo $patientAvatar; ?>" class="user-avatar" style="object-fit:cover;">
+<body class="flex h-screen overflow-hidden text-gray-800">
+<div class="flex w-full h-full relative">
+  
+    <aside class="w-64 bg-white border-r border-gray-200 flex flex-col h-full flex-shrink-0 z-10 shadow-sm">
+        <div class="flex items-center gap-2 p-6 border-b">
+            <i class="fa-solid fa-lungs text-3xl text-red-400"></i>
+            <h1 class="text-xl font-semibold text-gray-700">Pneumo-<span class="text-blue-500">Care</span></h1>
         </div>
-      </div>
-    </div>
 
-    <div class="filter-bar"><span style="font-size:14px;font-weight:600;color:#374151;">By Doctor</span><div class="search-count"><?php echo count($doctors); ?> matching doctors found</div></div>
+        <nav class="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
+            <a href="pat_dashboard.php" class="flex items-center gap-4 px-4 py-3 text-gray-500 hover:bg-gray-50 hover:text-gray-800 rounded-xl transition-colors font-medium">
+                <i class="fa-solid fa-gauge-high w-5 text-center text-xl"></i><span>Dashboard</span>
+            </a>
+            <a href="pat_report.php" class="flex items-center gap-4 px-4 py-3 text-gray-500 hover:bg-gray-50 hover:text-gray-800 rounded-xl transition-colors font-medium">
+                <i class="fa-solid fa-file-medical w-5 text-center text-xl"></i><span>Report</span>
+            </a>
+            <a href="pat_appointments.php" class="sidebar-active flex items-center gap-4 px-4 py-3 rounded-xl font-semibold transition-colors">
+                <i class="fa-solid fa-calendar-check w-5 text-center text-xl"></i><span>Appointments</span>
+            </a>
+            <a href="pat_doctors.php" class="flex items-center gap-4 px-4 py-3 text-gray-500 hover:bg-gray-50 hover:text-gray-800 rounded-xl transition-colors font-medium">
+                <i class="fa-solid fa-user-doctor w-5 text-center text-xl"></i><span>Doctors</span>
+            </a>
+            <a href="pat_messages.php" class="flex items-center gap-4 px-4 py-3 text-gray-500 hover:bg-gray-50 hover:text-gray-800 rounded-xl transition-colors font-medium">
+                <i class="fa-solid fa-comment-dots w-5 text-center text-xl"></i><span>Messages</span>
+            </a>
+        </nav>
 
-    <?php foreach($doctors as $doc): ?>
-        <?php if($expanded_doc == $doc['user_id']): ?>
-            <div class="doctor-row doctor-row-expanded" style="margin-bottom:0;">
-              <img src="<?php echo $doc['avatar_url'] ?: 'img/default.png'; ?>" class="doctor-avatar" style="object-fit:cover;">
-              <div style="flex:1"><div class="doctor-name">Dr. <?php echo htmlspecialchars($doc['full_name']); ?></div><div class="doctor-spec"><span>Speciality : </span><?php echo htmlspecialchars($doc['speciality']); ?></div></div>
-              <div class="doctor-fee-section"><div class="fee-label-sm">Consultation Fee</div><div class="fee-amount"><?php echo number_format($doc['consultation_fee']); ?> VND</div></div>
-              <button class="btn-pick" style="background:#6b7280" onclick="location.href='pat_book_step2.php'">Close</button>
+        <div class="p-6 border-t mt-auto border-gray-100">
+            <a href="logout.php" class="flex items-center gap-4 text-gray-500 hover:text-red-500 transition-colors font-medium">
+                <i class="fa-solid fa-right-from-bracket text-xl"></i><span>Logout</span>
+            </a>
+        </div>
+    </aside>
+
+    <main class="main-content bg-[#f4f7fa]">
+        <div class="topbar-wrapper flex-shrink-0">
+            <header class="topbar">
+            <h1>Pick Doctor & Schedule</h1>
+            <div class="flex items-center gap-6">
+                <div class="relative cursor-pointer text-gray-400 hover:text-gray-600 transition-colors">
+                    <span class="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
+                </div>
+                <div class="flex items-center gap-3 cursor-pointer">
+                    <div class="text-right hidden sm:block">
+                        <p class="text-sm font-semibold text-gray-800" style="line-height: 1.2;"><?php echo htmlspecialchars($patientName); ?></p>
+                        <p class="text-xs text-gray-500 font-medium">Patient</p>
+                    </div>
+                    <img src="<?php echo $patientAvatar; ?>" class="w-10 h-10 rounded-full object-cover border border-gray-200 shadow-sm" alt="Avatar">
+                </div>
             </div>
-            <div class="schedule-block">
-              <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Pick a date</div>
-              <div class="date-pills">
-                <?php for($i=0; $i<3; $i++): $d = date('Y-m-d', strtotime("+$i days")); ?>
-                    <div class="date-pill <?php echo $selected_date == $d ? 'active' : ''; ?>" onclick="location.href='?expand_doc=<?php echo $doc['user_id']; ?>&select_date=<?php echo $d; ?>'"><div class="day"><?php echo date('D', strtotime($d)); ?></div><div class="dt"><?php echo date('d-m', strtotime($d)); ?></div></div>
-                <?php endfor; ?>
-              </div>
-              <div class="slot-row"><span class="slot-label">Morning</span><div class="slot-pill" onclick="location.href='?doc_id=<?php echo $doc['user_id']; ?>&date=<?php echo $selected_date; ?>&time=09:00:00'">09:00</div><div class="slot-pill" onclick="location.href='?doc_id=<?php echo $doc['user_id']; ?>&date=<?php echo $selected_date; ?>&time=10:30:00'">10:30</div></div>
-              <div class="slot-row"><span class="slot-label">Afternoon</span><div class="slot-pill" onclick="location.href='?doc_id=<?php echo $doc['user_id']; ?>&date=<?php echo $selected_date; ?>&time=13:30:00'">13:30</div><div class="slot-pill" onclick="location.href='?doc_id=<?php echo $doc['user_id']; ?>&date=<?php echo $selected_date; ?>&time=15:00:00'">15:00</div></div>
+            </header>
+        </div>
+
+        <div class="content-area max-w-5xl mx-auto w-full">
+            
+            <div class="flex justify-center items-center mb-10 mt-2">
+                <div class="flex flex-col items-center">
+                    <div class="w-10 h-10 rounded-xl bg-blue-600 text-white font-bold flex items-center justify-center shadow-md"><i class="fa-solid fa-check"></i></div>
+                    <span class="text-xs font-bold text-blue-600 mt-2 tracking-wide uppercase">Patient Info</span>
+                </div>
+                <div class="w-16 h-1 bg-blue-600 mx-2 rounded-full -mt-6"></div>
+                <div class="flex flex-col items-center">
+                    <div class="w-10 h-10 rounded-xl bg-blue-600 text-white font-bold flex items-center justify-center shadow-md">2</div>
+                    <span class="text-xs font-bold text-blue-600 mt-2 tracking-wide uppercase">Doctor & Time</span>
+                </div>
+                <div class="w-16 h-1 bg-gray-200 mx-2 rounded-full -mt-6"></div>
+                <div class="flex flex-col items-center opacity-50">
+                    <div class="w-10 h-10 rounded-xl bg-gray-200 text-gray-500 font-bold flex items-center justify-center">3</div>
+                    <span class="text-xs font-bold text-gray-500 mt-2 tracking-wide uppercase">Confirm</span>
+                </div>
             </div>
-        <?php else: ?>
-            <div class="doctor-row">
-              <img src="<?php echo $doc['avatar_url'] ?: 'img/default.png'; ?>" class="doctor-avatar" style="object-fit:cover;">
-              <div style="flex:1"><div class="doctor-name">Dr. <?php echo htmlspecialchars($doc['full_name']); ?></div><div class="doctor-spec"><span>Speciality : </span><?php echo htmlspecialchars($doc['speciality']); ?></div></div>
-              <div class="doctor-fee-section"><div class="fee-label-sm">Consultation Fee</div><div class="fee-amount"><?php echo number_format($doc['consultation_fee']); ?> VND</div></div>
-              <button class="btn-pick" onclick="location.href='?expand_doc=<?php echo $doc['user_id']; ?>'">Pick</button>
+
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6 flex justify-between items-center">
+                <div class="flex items-center gap-3">
+                    <span class="text-sm font-semibold text-gray-700">Filter By Doctor</span>
+                </div>
+                <div class="bg-blue-50 text-blue-600 text-sm px-4 py-2 rounded-lg font-medium border border-blue-100">
+                    <?php echo count($doctors); ?> matching doctors found
+                </div>
             </div>
-        <?php endif; ?>
-    <?php endforeach; ?>
-  </div>
+
+            <div class="space-y-4 mb-10">
+                <?php foreach($doctors as $doc): ?>
+                    <?php if($expanded_doc == $doc['user_id']): ?>
+                        
+                        <div class="bg-white border-2 border-blue-500 rounded-t-xl p-5 flex items-center gap-5">
+                            <img src="<?php echo $doc['avatar_url'] ?: 'img/default.png'; ?>" class="w-16 h-16 rounded-full object-cover border border-gray-100 shadow-sm">
+                            <div class="flex-1">
+                                <h3 class="text-lg font-bold text-gray-800">Dr. <?php echo htmlspecialchars($doc['full_name']); ?></h3>
+                                <p class="text-sm text-gray-500 mt-1"><span class="text-blue-500 font-medium">Speciality:</span> <?php echo htmlspecialchars($doc['speciality']); ?></p>
+                            </div>
+                            <div class="text-right mr-6 hidden md:block">
+                                <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Consultation Fee</p>
+                                <p class="text-lg font-bold text-yellow-600"><?php echo number_format($doc['consultation_fee']); ?> <span class="text-sm">VND</span></p>
+                            </div>
+                            <button class="bg-gray-100 text-gray-600 hover:bg-gray-200 px-6 py-2.5 rounded-lg text-sm font-semibold transition-colors" onclick="location.href='pat_book_step2.php'">
+                                Cancel
+                            </button>
+                        </div>
+                        
+                        <div class="bg-blue-50/50 border-2 border-t-0 border-blue-500 rounded-b-xl p-6">
+                            <p class="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide">Pick a Date</p>
+                            <div class="flex gap-3 mb-8 overflow-x-auto pb-2">
+                                <?php for($i=0; $i<5; $i++): $d = date('Y-m-d', strtotime("+$i days")); ?>
+                                    <div onclick="location.href='?expand_doc=<?php echo $doc['user_id']; ?>&select_date=<?php echo $d; ?>'" 
+                                         class="cursor-pointer min-w-[80px] text-center border transition-all rounded-xl py-3
+                                         <?php echo $selected_date == $d ? 'bg-blue-600 border-blue-600 text-white shadow-md' : 'bg-white border-gray-200 text-gray-600 hover:border-blue-300 hover:bg-blue-50'; ?>">
+                                        <p class="text-xs font-semibold uppercase mb-1 <?php echo $selected_date == $d ? 'text-blue-100' : 'text-gray-400'; ?>"><?php echo date('D', strtotime($d)); ?></p>
+                                        <p class="text-lg font-bold"><?php echo date('d', strtotime($d)); ?></p>
+                                    </div>
+                                <?php endfor; ?>
+                            </div>
+                            
+                            <div class="space-y-4">
+                                <div class="flex items-center gap-6">
+                                    <span class="text-sm font-semibold text-gray-500 w-20 flex-shrink-0 flex items-center gap-2"><i class="fa-regular fa-sun text-yellow-500"></i> Morning</span>
+                                    <div class="flex gap-3 flex-wrap">
+                                        <?php foreach($morning_slots as $time): ?>
+                                            <?php if(isset($booked_slots[$selected_date]) && in_array($time, $booked_slots[$selected_date])): ?>
+                                                <button disabled class="bg-gray-100 border border-gray-200 text-gray-400 px-4 py-2 rounded-lg text-sm font-medium cursor-not-allowed flex items-center gap-2 opacity-60 line-through">
+                                                    <i class="fa-solid fa-lock text-xs"></i> <?php echo $time; ?>
+                                                </button>
+                                            <?php else: ?>
+                                                <button onclick="location.href='?doc_id=<?php echo $doc['user_id']; ?>&date=<?php echo $selected_date; ?>&time=<?php echo $time; ?>:00'" class="bg-white border border-gray-200 text-gray-700 hover:border-blue-500 hover:text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">
+                                                    <?php echo $time; ?>
+                                                </button>
+                                            <?php endif; ?>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                                
+                                <div class="flex items-center gap-6 mt-4">
+                                    <span class="text-sm font-semibold text-gray-500 w-20 flex-shrink-0 flex items-center gap-2"><i class="fa-solid fa-cloud-sun text-orange-400"></i> Afternoon</span>
+                                    <div class="flex gap-3 flex-wrap">
+                                        <?php foreach($afternoon_slots as $time): ?>
+                                            <?php if(isset($booked_slots[$selected_date]) && in_array($time, $booked_slots[$selected_date])): ?>
+                                                <button disabled class="bg-gray-100 border border-gray-200 text-gray-400 px-4 py-2 rounded-lg text-sm font-medium cursor-not-allowed flex items-center gap-2 opacity-60 line-through">
+                                                    <i class="fa-solid fa-lock text-xs"></i> <?php echo $time; ?>
+                                                </button>
+                                            <?php else: ?>
+                                                <button onclick="location.href='?doc_id=<?php echo $doc['user_id']; ?>&date=<?php echo $selected_date; ?>&time=<?php echo $time; ?>:00'" class="bg-white border border-gray-200 text-gray-700 hover:border-blue-500 hover:text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">
+                                                    <?php echo $time; ?>
+                                                </button>
+                                            <?php endif; ?>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    <?php else: ?>
+                        
+                        <div class="bg-white border border-gray-100 rounded-xl p-5 flex items-center gap-5 hover:shadow-md transition-shadow">
+                            <img src="<?php echo $doc['avatar_url'] ?: 'img/default.png'; ?>" class="w-16 h-16 rounded-full object-cover border border-gray-100 shadow-sm">
+                            <div class="flex-1">
+                                <h3 class="text-lg font-bold text-gray-800">Dr. <?php echo htmlspecialchars($doc['full_name']); ?></h3>
+                                <p class="text-sm text-gray-500 mt-1"><span class="text-blue-500 font-medium">Speciality:</span> <?php echo htmlspecialchars($doc['speciality']); ?></p>
+                            </div>
+                            <div class="text-right mr-6 hidden md:block">
+                                <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Consultation Fee</p>
+                                <p class="text-lg font-bold text-yellow-600"><?php echo number_format($doc['consultation_fee']); ?> <span class="text-sm">VND</span></p>
+                            </div>
+                            <button class="bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-600 hover:text-white px-8 py-2.5 rounded-lg text-sm font-semibold transition-colors" onclick="location.href='?expand_doc=<?php echo $doc['user_id']; ?>'">
+                                Pick Doctor
+                            </button>
+                        </div>
+                        
+                    <?php endif; ?>
+                <?php endforeach; ?>
+            </div>
+            
+        </div>
+    </main>
 </div>
 </body>
 </html>

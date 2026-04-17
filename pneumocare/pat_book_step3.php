@@ -1,7 +1,12 @@
 <?php
 session_start();
 require 'db.php';
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Patient' || !isset($_SESSION['booking_info']['doctor_id'])) { header("Location: pat_book_step1.php"); exit(); }
+ini_set('display_errors', 1); ini_set('display_startup_errors', 1); error_reporting(E_ALL);
+
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Patient' || !isset($_SESSION['booking_info']['doctor_id'])) { 
+    header("Location: pat_book_step1.php"); 
+    exit(); 
+}
 
 $patientId = $_SESSION['user_id'];
 $patientName = $_SESSION['name'];
@@ -10,202 +15,196 @@ $booking = $_SESSION['booking_info'];
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     try {
-        $stmt = $pdo->prepare("INSERT INTO Appointments (patient_id, doctor_id, appointment_date, appointment_time, status, fee_status) VALUES (?, ?, ?, ?, 'Scheduled', 'Unpaid')");
-        $stmt->execute([$patientId, $booking['doctor_id'], $booking['appt_date'], $booking['appt_time']]);
+        // Lấy note từ form (nếu bệnh nhân không nhập thì để trống)
+        $notes = isset($_POST['patient_notes']) ? trim($_POST['patient_notes']) : null;
+        
+        $stmt = $pdo->prepare("INSERT INTO Appointments (patient_id, doctor_id, appointment_date, appointment_time, status, fee_status, patient_notes) VALUES (?, ?, ?, ?, 'Scheduled', 'Unpaid', ?)");
+        $stmt->execute([$patientId, $booking['doctor_id'], $booking['appt_date'], $booking['appt_time'], $notes]);
+        
         unset($_SESSION['booking_info']);
         header("Location: pat_appointments.php");
         exit();
-    } catch (PDOException $e) {}
+    } catch (PDOException $e) {
+        die("Lỗi: " . $e->getMessage());
+    }
 }
 ?>
 <!DOCTYPE html>
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pneumo-Care | Patient - Confirm Appointment</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', sans-serif; background: #f0f4f8; color: #1a2a3a; }
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #1f2937; }
 
-        .navbar { background: #fff; border-bottom: 1px solid #e0e8f0; padding: 0 32px; height: 64px; display: flex; align-items: center; justify-content: space-between; }
-        .nav-logo { display: flex; align-items: center; gap: 8px; font-size: 20px; font-weight: 700; color: #1a2a3a; }
-        .nav-logo span { color: #3b82f6; }
-        .nav-links { display: flex; align-items: center; gap: 28px; }
-        .nav-links a { text-decoration: none; color: #6b7280; font-size: 15px; }
-        .btn-login { background: none; border: none; font-size: 15px; font-weight: 600; cursor: pointer; color: #1a2a3a; }
-        .btn-signup { background: #6b7280; color: #fff; border: none; padding: 10px 22px; border-radius: 8px; font-size: 15px; cursor: pointer; }
+        .layout { display: flex; min-height: 100vh; overflow: hidden; }
+        
+        /* SIDEBAR CHUẨN ĐỒNG BỘ */
+        .sidebar { width: 260px; background: #ffffff; border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; min-height: 100vh; flex-shrink: 0; z-index: 10; }
+        .sidebar-active { background-color: #eff6ff; color: #2563eb; border-left: 4px solid #2563eb; font-weight: 600; }
 
-        .layout { display: flex; min-height: calc(100vh - 64px); }
-        .sidebar { width: 220px; background: #fff; border-right: 1px solid #e0e8f0; padding: 0; display: flex; flex-direction: column; min-height: 100vh; }
-        .sidebar-logo { display: flex; align-items: center; gap: 8px; padding: 18px 20px 18px; font-size: 17px; font-weight: 700; border-bottom: 1px solid #e0e8f0; }
-        .sidebar-logo span { color: #3b82f6; }
-        .sidebar-menu { flex: 1; padding-top: 8px; }
-        .sidebar-item { display: flex; align-items: center; gap: 10px; padding: 11px 20px; color: #6b7280; font-size: 14px; cursor: pointer; text-decoration: none; transition: all 0.15s; }
-        .sidebar-item:hover { background: #f0f4f8; color: #1a2a3a; }
-        .sidebar-item.active { background: #eff6ff; color: #3b82f6; border-right: 3px solid #3b82f6; font-weight: 600; }
-        .sidebar-item svg { width: 18px; height: 18px; flex-shrink: 0; }
-        .sidebar-logout { padding: 13px 20px; display: flex; align-items: center; gap: 10px; color: #6b7280; font-size: 14px; cursor: pointer; border-top: 1px solid #e0e8f0; }
-        .main-content { flex: 1; padding: 28px 32px; }
-        .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
-        .topbar h1 { font-size: 22px; font-weight: 600; }
-        .topbar-right { display: flex; align-items: center; gap: 16px; }
-        .notif-bell { position: relative; cursor: pointer; }
-        .notif-dot { position: absolute; top: -2px; right: -2px; width: 8px; height: 8px; background: #ef4444; border-radius: 50%; }
-        .user-info { display: flex; align-items: center; gap: 10px; cursor: pointer; }
-        .user-name { font-size: 14px; font-weight: 600; }
-        .user-role { font-size: 12px; color: #6b7280; }
-        .user-avatar { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; }
+        /* MAIN CONTENT */
+        .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .topbar-wrapper { padding: 32px 40px 0 40px; }
+        .topbar { 
+            height: 72px; background: #ffffff; border: 1px solid #f3f4f6; 
+            display: flex; align-items: center; justify-content: space-between; 
+            padding: 0 24px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
+            margin-bottom: 24px;
+        }
+        .topbar h1 { font-size: 22px; font-weight: 600; color: #1f2937; margin: 0; }
+        .content-area { padding: 0 40px 40px 40px; flex: 1; overflow-y: auto; }
 
-        .signup-bg { background: #eef3fb; min-height: calc(100vh - 64px); padding: 40px 20px; }
-        .step-bar { display: flex; align-items: center; justify-content: center; padding-bottom: 32px; }
-        .step { display: flex; flex-direction: column; align-items: center; gap: 8px; }
-        .step-circle { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px; color: #fff; }
-        .step-circle.orange { background: #f59e0b; }
-        .step-circle.blue { background: #3b82f6; }
-        .step-line { width: 200px; height: 3px; background: #3b82f6; margin-top: -20px; }
-        .step-label { font-size: 13px; font-weight: 600; color: #3b82f6; }
-
-        .form-card { background: #fff; border-radius: 16px; padding: 32px 40px; max-width: 720px; margin: 0 auto; box-shadow: 0 2px 16px rgba(0,0,0,0.06); }
-        .form-card h2 { text-align: center; font-size: 20px; font-weight: 700; color: #3b82f6; margin-bottom: 24px; }
-        .form-group { margin-bottom: 16px; }
-        .form-group label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: #374151; }
-        .form-input { width: 100%; padding: 12px 16px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 14px; background: #f9fafb; outline: none; transition: border 0.2s; font-family: inherit; }
-        .form-input:focus { border-color: #3b82f6; background: #fff; }
-        .form-input-wrap { position: relative; }
-        .form-input-wrap .eye-icon { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #9ca3af; }
-        .form-select { width: 100%; padding: 12px 16px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 14px; background: #f9fafb; outline: none; font-family: inherit; }
-        .form-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-        .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-        .btn-primary { background: #3b82f6; color: #fff; border: none; padding: 12px 40px; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; display: block; margin: 24px auto 0; min-width: 140px; }
-        .btn-primary:hover { background: #2563eb; }
-        .btn-dark { background: #1e293b; color: #f59e0b; border: none; padding: 13px 40px; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; display: block; margin: 24px auto 0; min-width: 200px; }
-        .back-title { font-size: 18px; font-weight: 700; color: #1a2a3a; display: flex; align-items: center; gap: 6px; cursor: pointer; margin-bottom: 16px; }
-
-        .dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .dash-card { background: #fff; border-radius: 14px; padding: 20px; border: 1px solid #e0e8f0; }
-        .dash-card-title { font-size: 15px; font-weight: 600; color: #374151; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
-        .activity-tile { border-radius: 10px; padding: 14px 18px; display: flex; align-items: center; gap: 16px; margin-bottom: 10px; }
-        .activity-tile:last-child { margin-bottom: 0; }
-        .tile-num { font-size: 26px; font-weight: 700; color: #1a2a3a; }
-        .tile-label { font-size: 13px; color: #6b7280; }
-        .donut-wrap { display: flex; align-items: center; gap: 24px; }
-        .legend-item { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 8px; }
-        .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-        .fee-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-        .fee-row:last-child { margin-bottom: 0; }
-        .fee-avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
-        .fee-name { font-size: 13px; font-weight: 600; }
-        .fee-status { font-size: 12px; color: #f59e0b; }
-        .btn-fee { background: #3b82f6; color: #fff; border: none; padding: 6px 14px; border-radius: 8px; font-size: 13px; cursor: pointer; white-space: nowrap; margin-left: auto; }
-
-        .filter-bar { background: #fff; border-radius: 10px; padding: 14px 20px; border: 1px solid #e0e8f0; display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
-        .filter-select { border: 1px solid #e0e8f0; border-radius: 8px; padding: 8px 14px; font-size: 14px; background: #fff; min-width: 200px; font-family: inherit; }
-        .search-count { display: flex; align-items: center; gap: 8px; font-size: 14px; background: #eff6ff; border-radius: 8px; padding: 8px 14px; border: 1px solid #bfdbfe; color: #374151; }
-
-        .doctor-row { background: #fff; border: 1px solid #e0e8f0; border-radius: 10px; padding: 16px 20px; display: flex; align-items: center; gap: 16px; margin-bottom: 8px; }
-        .doctor-avatar { width: 52px; height: 52px; border-radius: 50%; background: #c7d2fe; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #3730a3; font-size: 16px; flex-shrink: 0; }
-        .doctor-name { font-size: 16px; font-weight: 700; color: #1e3a5f; }
-        .doctor-spec { font-size: 13px; color: #3b82f6; }
-        .doctor-spec span { color: #6b7280; }
-        .doctor-fee-section { text-align: right; margin-right: 12px; }
-        .fee-label-sm { font-size: 12px; color: #6b7280; }
-        .fee-amount { font-size: 16px; font-weight: 700; color: #f59e0b; }
-        .btn-pick { background: #3b82f6; color: #fff; border: none; padding: 10px 22px; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; }
-
-        .schedule-block { background: #f8fafc; border: 1px solid #e0e8f0; border-top: none; border-radius: 0 0 10px 10px; padding: 16px 20px; margin-top: -8px; margin-bottom: 8px; }
-        .date-pills { display: flex; gap: 10px; margin: 10px 0 14px; }
-        .date-pill { padding: 8px 16px; border-radius: 8px; border: 1px solid #e0e8f0; cursor: pointer; text-align: center; background: #fff; }
-        .date-pill.active { background: #1e3a5f; color: #fff; border-color: #1e3a5f; }
-        .date-pill .day { font-size: 11px; font-weight: 600; }
-        .date-pill .dt { font-size: 14px; font-weight: 700; }
-        .slot-row { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
-        .slot-label { font-size: 12px; color: #6b7280; width: 64px; }
-        .slot-pill { padding: 6px 14px; border-radius: 6px; border: 1px solid #e0e8f0; font-size: 13px; cursor: pointer; background: #fff; }
-        .slot-pill:hover { border-color: #3b82f6; }
-
-        .summary-card { background: #fff; border-radius: 14px; padding: 28px 32px; border: 1px solid #e0e8f0; max-width: 860px; margin: 0 auto; }
-        .summary-title { text-align: center; font-size: 24px; font-weight: 700; color: #1e3a5f; margin-bottom: 20px; }
-        .summary-inner { border: 1.5px solid #3b82f6; border-radius: 10px; overflow: hidden; }
-        .summary-doctor-row { padding: 16px 20px; display: flex; align-items: center; gap: 14px; border-bottom: 1px solid #e0e8f0; }
-        .summary-info-rows { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
-        .summary-row { display: flex; align-items: flex-start; gap: 12px; font-size: 14px; }
-        .symptom-textarea { width: 100%; border: 1px solid #e0e8f0; border-radius: 8px; padding: 12px; font-size: 14px; color: #9ca3af; min-height: 80px; font-family: inherit; resize: vertical; }
-
-        .table-card { background: #fff; border-radius: 14px; padding: 20px 24px; border: 1px solid #e0e8f0; }
-        .tab-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-        .tab-links { display: flex; border-bottom: 2px solid #e0e8f0; }
-        .tab-link { padding: 10px 20px; font-size: 14px; font-weight: 600; color: #9ca3af; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; text-decoration: none; }
-        .tab-link.active { color: #3b82f6; border-bottom-color: #3b82f6; }
-        .btn-new { background: #3b82f6; color: #fff; border: none; padding: 9px 16px; border-radius: 8px; font-size: 14px; cursor: pointer; display: flex; align-items: center; gap: 6px; }
-        .search-row { display: flex; gap: 12px; margin-bottom: 16px; }
-        .search-box { display: flex; align-items: center; gap: 8px; border: 1px solid #e0e8f0; border-radius: 8px; padding: 8px 14px; background: #fff; }
-        .search-box input { border: none; outline: none; font-size: 14px; background: transparent; font-family: inherit; }
-        .filter-date-btn { display: flex; align-items: center; gap: 8px; border: 1px solid #e0e8f0; border-radius: 20px; padding: 8px 14px; font-size: 14px; cursor: pointer; background: #fff; }
-        .data-table { width: 100%; border-collapse: collapse; }
-        .data-table th { font-size: 13px; color: #6b7280; font-weight: 600; padding: 10px 12px; border-bottom: 1px solid #e0e8f0; text-align: left; }
-        .data-table td { padding: 12px 12px; font-size: 14px; border-bottom: 1px solid #f3f4f6; }
-        .data-table tr:last-child td { border-bottom: none; }
-        .patient-cell { display: flex; align-items: center; gap: 10px; }
-        .link-blue { color: #3b82f6; cursor: pointer; text-decoration: none; }
-        .link-green { color: #22c55e; font-weight: 600; }
-        .btn-reschedule { background: none; border: none; color: #3b82f6; font-size: 13px; cursor: pointer; }
-        .btn-icon { width: 28px; height: 28px; border-radius: 50%; border: 1px solid #e0e8f0; background: #fff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; }
-        .pagination { display: flex; align-items: center; gap: 6px; justify-content: flex-end; margin-top: 16px; }
-        .page-btn { width: 30px; height: 30px; border-radius: 6px; border: 1px solid #e0e8f0; background: #fff; cursor: pointer; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; }
-        .page-btn.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
-        .page-btn-text { background: none; border: none; color: #6b7280; font-size: 13px; cursor: pointer; }
-
-        .detail-header { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #e0e8f0; padding-bottom: 12px; margin-bottom: 20px; }
-        .detail-tab-active { font-size: 14px; font-weight: 700; color: #3b82f6; border-bottom: 2px solid #3b82f6; padding-bottom: 13px; margin-bottom: -14px; }
-        .appt-code { font-size: 13px; color: #6b7280; }
-        .appt-code strong { color: #1a2a3a; }
-        .badge-approved { color: #22c55e; font-weight: 700; font-size: 14px; }
-        .detail-title { font-size: 22px; font-weight: 700; margin-bottom: 24px; }
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
     </style>
 </head>
-<body>
-<div class="layout">
-  <div class="sidebar">
-    <div class="sidebar-logo"><svg viewBox="0 0 32 32" fill="none" width="26" height="26"><ellipse cx="10" cy="18" rx="7" ry="10" fill="#f87171" transform="rotate(-10 10 18)"/><ellipse cx="22" cy="18" rx="7" ry="10" fill="#fca5a5" transform="rotate(10 22 18)"/></svg>Pneumo-<span>Care</span></div>
-    <nav class="sidebar-menu">
-      <a class="sidebar-item" href="pat_dashboard.php"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18"><rect x="3" y="3" width="7" height="7" rx="1" stroke-width="2"/><rect x="14" y="3" width="7" height="7" rx="1" stroke-width="2"/><rect x="3" y="14" width="7" height="7" rx="1" stroke-width="2"/><rect x="14" y="14" width="7" height="7" rx="1" stroke-width="2"/></svg> Dashboard</a>
-      <a class="sidebar-item" href="#"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18"><path d="M9 17v-2m3 2v-4m3 4v-6M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-width="2"/></svg> Report</a>
-      <a class="sidebar-item active" href="pat_appointments.php"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" stroke-width="2"/></svg> Appointments</a>
-      <a class="sidebar-item" href="#"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" stroke-width="2"/></svg> Doctors</a>
-      <a class="sidebar-item" href="#"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18"><path d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" stroke-width="2"/></svg> Messages</a>
-      <a class="sidebar-item" href="#"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18"><circle cx="12" cy="12" r="3" stroke-width="2"/></svg> Settings</a>
-    </nav>
-    <div class="sidebar-logout" onclick="location.href='logout.php'"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" stroke-width="2"/></svg> Logout</div>
-  </div>
-
-  <div class="main-content">
-    <div class="topbar">
-      <h1>Confirm Appointment</h1>
-      <div class="topbar-right">
-        <div class="notif-bell"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="22" height="22"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" stroke-width="2"/></svg><div class="notif-dot"></div></div>
-        <div class="user-info">
-          <div style="text-align:right"><div class="user-name"><?php echo htmlspecialchars($patientName); ?></div><div class="user-role">Patient</div></div>
-          <img src="<?php echo $patientAvatar; ?>" class="user-avatar" style="object-fit:cover;">
+<body class="flex h-screen overflow-hidden text-gray-800">
+<div class="flex w-full h-full relative">
+  
+    <aside class="w-64 bg-white border-r border-gray-200 flex flex-col h-full flex-shrink-0 z-10 shadow-sm">
+        <div class="flex items-center gap-2 p-6 border-b">
+            <i class="fa-solid fa-lungs text-3xl text-red-400"></i>
+            <h1 class="text-xl font-semibold text-gray-700">Pneumo-<span class="text-blue-500">Care</span></h1>
         </div>
-      </div>
-    </div>
 
-    <form method="POST" action="">
-      <div class="summary-card">
-        <div class="summary-title">Appointment Summary</div>
-        <div class="summary-inner">
-          <div class="summary-doctor-row"><div style="font-size:18px;font-weight:700;color:#1e3a5f;">Dr. <?php echo htmlspecialchars($booking['doctor_name']); ?></div></div>
-          <div class="summary-info-rows">
-            <div class="summary-row"><span style="font-weight:bold; color:#ef4444;">Time:</span><span><?php echo date('h:i A', strtotime($booking['appt_time'])) . ' – ' . date('F d, Y', strtotime($booking['appt_date'])); ?></span></div>
-            <div class="summary-row"><span style="font-weight:bold; color:#3b82f6;">Patient:</span><span><?php echo htmlspecialchars($booking['name']); ?> (<?php echo htmlspecialchars($booking['phone']); ?>)</span></div>
-            <div class="summary-row"><span style="font-weight:bold; color:#6b7280;">Location:</span><span>Medical Center No. 1 Ton That Tung, Dong Da, Ha Noi</span></div>
-            <textarea class="symptom-textarea" style="margin-top:10px" placeholder="Type Your Symptom Details here..."></textarea>
-          </div>
+        <nav class="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
+            <a href="pat_dashboard.php" class="flex items-center gap-4 px-4 py-3 text-gray-500 hover:bg-gray-50 hover:text-gray-800 rounded-xl transition-colors font-medium">
+                <i class="fa-solid fa-gauge-high w-5 text-center text-xl"></i><span>Dashboard</span>
+            </a>
+            <a href="pat_report.php" class="flex items-center gap-4 px-4 py-3 text-gray-500 hover:bg-gray-50 hover:text-gray-800 rounded-xl transition-colors font-medium">
+                <i class="fa-solid fa-file-medical w-5 text-center text-xl"></i><span>Report</span>
+            </a>
+            <a href="pat_appointments.php" class="sidebar-active flex items-center gap-4 px-4 py-3 rounded-xl font-semibold transition-colors">
+                <i class="fa-solid fa-calendar-check w-5 text-center text-xl"></i><span>Appointments</span>
+            </a>
+            <a href="pat_doctors.php" class="flex items-center gap-4 px-4 py-3 text-gray-500 hover:bg-gray-50 hover:text-gray-800 rounded-xl transition-colors font-medium">
+                <i class="fa-solid fa-user-doctor w-5 text-center text-xl"></i><span>Doctors</span>
+            </a>
+            <a href="pat_messages.php" class="flex items-center gap-4 px-4 py-3 text-gray-500 hover:bg-gray-50 hover:text-gray-800 rounded-xl transition-colors font-medium">
+                <i class="fa-solid fa-comment-dots w-5 text-center text-xl"></i><span>Messages</span>
+            </a>
+        </nav>
+
+        <div class="p-6 border-t mt-auto border-gray-100">
+            <a href="logout.php" class="flex items-center gap-4 text-gray-500 hover:text-red-500 transition-colors font-medium">
+                <i class="fa-solid fa-right-from-bracket text-xl"></i><span>Logout</span>
+            </a>
         </div>
-        <button type="submit" class="btn-dark">Confirm & Book Appointment</button>
-      </div>
-    </form>
-  </div>
+    </aside>
+
+    <main class="main-content bg-[#f4f7fa]">
+        <div class="topbar-wrapper flex-shrink-0">
+            <header class="topbar">
+            <h1>Confirm Appointment</h1>
+            <div class="flex items-center gap-6">
+                <div class="relative cursor-pointer text-gray-400 hover:text-gray-600 transition-colors">
+                    <i class="fa-solid fa-bell text-xl"></i>
+                    <span class="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
+                </div>
+                <div class="flex items-center gap-3 cursor-pointer">
+                    <div class="text-right hidden sm:block">
+                        <p class="text-sm font-semibold text-gray-800" style="line-height: 1.2;"><?php echo htmlspecialchars($patientName); ?></p>
+                        <p class="text-xs text-gray-500 font-medium">Patient</p>
+                    </div>
+                    <img src="<?php echo $patientAvatar; ?>" class="w-10 h-10 rounded-full object-cover border border-gray-200 shadow-sm" alt="Avatar">
+                </div>
+            </div>
+            </header>
+        </div>
+
+        <div class="content-area max-w-5xl mx-auto w-full">
+            
+            <div class="flex justify-center items-center mb-10 mt-2">
+                <div class="flex flex-col items-center">
+                    <div class="w-10 h-10 rounded-xl bg-blue-600 text-white font-bold flex items-center justify-center shadow-md"><i class="fa-solid fa-check"></i></div>
+                    <span class="text-xs font-bold text-blue-600 mt-2 tracking-wide uppercase">Patient Info</span>
+                </div>
+                <div class="w-16 h-1 bg-blue-600 mx-2 rounded-full -mt-6"></div>
+                <div class="flex flex-col items-center">
+                    <div class="w-10 h-10 rounded-xl bg-blue-600 text-white font-bold flex items-center justify-center shadow-md"><i class="fa-solid fa-check"></i></div>
+                    <span class="text-xs font-bold text-blue-600 mt-2 tracking-wide uppercase">Doctor & Time</span>
+                </div>
+                <div class="w-16 h-1 bg-blue-600 mx-2 rounded-full -mt-6"></div>
+                <div class="flex flex-col items-center">
+                    <div class="w-10 h-10 rounded-xl bg-blue-600 text-white font-bold flex items-center justify-center shadow-md">3</div>
+                    <span class="text-xs font-bold text-blue-600 mt-2 tracking-wide uppercase">Confirm</span>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-10 max-w-3xl mx-auto">
+                <div class="border-b border-gray-100 pb-5 mb-8 flex items-center justify-between">
+                    <h2 class="text-xl font-bold text-[#003366]">Step 3: Review & Confirm</h2>
+                    <a href="pat_book_step2.php" class="text-sm font-medium text-gray-400 hover:text-blue-600 transition-colors flex items-center gap-2">
+                        <i class="fa-solid fa-arrow-left"></i> Back to Schedule
+                    </a>
+                </div>
+
+                <form method="POST" action="">
+                    <div class="border-2 border-blue-100 rounded-2xl overflow-hidden mb-8 shadow-sm">
+                        <div class="bg-blue-50 px-6 py-5 flex items-center gap-4 border-b border-blue-100">
+                            <div class="w-14 h-14 bg-white text-blue-600 rounded-full flex items-center justify-center font-bold text-2xl shadow-sm">
+                                <i class="fa-solid fa-user-doctor"></i>
+                            </div>
+                            <div>
+                                <p class="text-[11px] text-gray-500 font-bold uppercase tracking-widest mb-1">Selected Doctor</p>
+                                <h3 class="text-xl font-extrabold text-[#003366]">Dr. <?php echo htmlspecialchars($booking['doctor_name']); ?></h3>
+                            </div>
+                        </div>
+                        
+                        <div class="p-8 space-y-6 bg-white">
+                            <div class="flex items-start gap-6">
+                                <div class="w-24 flex-shrink-0 font-bold text-red-500 uppercase text-xs tracking-wider mt-1">Time:</div>
+                                <div class="font-semibold text-gray-800 text-lg bg-gray-50 px-4 py-2 rounded-lg border border-gray-100 w-full">
+                                    <?php echo date('h:i A', strtotime($booking['appt_time'])); ?> 
+                                    <span class="mx-3 text-gray-300">|</span> 
+                                    <?php echo date('F d, Y', strtotime($booking['appt_date'])); ?>
+                                </div>
+                            </div>
+                            
+                            <div class="flex items-start gap-6">
+                                <div class="w-24 flex-shrink-0 font-bold text-blue-600 uppercase text-xs tracking-wider mt-1">Patient:</div>
+                                <div class="font-semibold text-gray-800 text-lg bg-blue-50/50 px-4 py-3 rounded-lg border border-blue-100 w-full">
+                                    <?php echo htmlspecialchars($booking['name']); ?> 
+                                    <span class="text-sm text-gray-500 font-medium block mt-1.5"><i class="fa-solid fa-phone text-xs mr-1 opacity-70"></i> <?php echo htmlspecialchars($booking['phone']); ?></span>
+                                </div>
+                            </div>
+                            
+                            <div class="flex items-start gap-6">
+                                <div class="w-24 flex-shrink-0 font-bold text-gray-400 uppercase text-xs tracking-wider mt-1">Location:</div>
+                                <div class="text-gray-700 font-medium bg-gray-50 px-4 py-3 rounded-lg border border-gray-100 w-full flex items-start gap-2">
+                                    <i class="fa-solid fa-location-dot mt-1 text-red-400"></i>
+                                    PneumoCare Medical Center, 1st Floor, Building A.
+                                </div>
+                            </div>
+                            
+                            <div class="pt-8 mt-6 border-t border-gray-100">
+                                <label class="block text-[11px] font-bold text-gray-600 mb-3 uppercase tracking-widest">Symptoms / Notes for Doctor <span class="text-gray-400 font-normal normal-case">(Optional)</span></label>
+                                <textarea name="patient_notes" rows="4" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-4 text-sm font-medium text-gray-700 focus:border-blue-400 focus:bg-white focus:shadow-[0_0_0_3px_rgba(59,130,246,0.1)] outline-none transition-all resize-none placeholder-gray-400" placeholder="Briefly describe your symptoms (e.g., cough, fever duration) or leave a note..."></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end border-t border-gray-100 pt-6">
+                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-xl text-sm font-bold transition-all shadow-md hover:shadow-lg flex items-center gap-3 uppercase tracking-wide">
+                            <i class="fa-solid fa-check-circle text-lg"></i> Confirm & Book
+                        </button>
+                    </div>
+                </form>
+            </div>
+            
+        </div>
+    </main>
 </div>
 </body>
 </html>
