@@ -1,7 +1,7 @@
 <?php
 // ==========================================
 // TÊN FILE: pat_dashboard.php
-// CHỨC NĂNG: Màn hình chính của Bệnh nhân (Lịch khám, Học phí, Tin nhắn)
+// CHỨC NĂNG: Màn hình chính của Bệnh nhân (Luồng Thanh toán phí trước khi khám)
 // ==========================================
 session_start();
 require 'db.php';
@@ -26,23 +26,24 @@ try {
     $stmt->execute([$patientId]);
     $totalAppointments = $stmt->fetchColumn();
 
-    // Đếm số lịch khám đã hoàn thành
+    // Đếm số bệnh án đã hoàn thành (Medical Records Generated)
     $stmtComp = $pdo->prepare("SELECT COUNT(*) FROM Appointments WHERE patient_id = ? AND status = 'Completed'");
     $stmtComp->execute([$patientId]);
     $totalCompleted = $stmtComp->fetchColumn();
 
-    // Lấy danh sách hóa đơn chưa thanh toán
+    // SỬA LOGIC: Lấy danh sách LỊCH KHÁM SẮP TỚI CHƯA THANH TOÁN (Scheduled + Unpaid)
     $stmtFee = $pdo->prepare("
-        SELECT a.appointment_id, a.appointment_date, u_d.full_name as doctor_name, u_d.avatar_url as doc_avatar, dp.consultation_fee
+        SELECT a.appointment_id, a.appointment_date, a.appointment_time, u_d.full_name as doctor_name, u_d.avatar_url as doc_avatar, dp.consultation_fee
         FROM Appointments a
         JOIN Users u_d ON a.doctor_id = u_d.user_id
         JOIN Doctor_Profiles dp ON u_d.user_id = dp.doctor_id
-        WHERE a.patient_id = ? AND a.status = 'Completed' AND a.fee_status = 'Unpaid'
+        WHERE a.patient_id = ? AND a.status = 'Scheduled' AND a.fee_status = 'Unpaid'
+        ORDER BY a.appointment_date ASC, a.appointment_time ASC
     ");
     $stmtFee->execute([$patientId]);
     $pendingFees = $stmtFee->fetchAll();
 
-    // LẤY DỮ LIỆU TIN NHẮN MỚI NHẤT (Từ Admin hoặc Bác sĩ)
+    // LẤY DỮ LIỆU TIN NHẮN MỚI NHẤT
     $stmtMsg = $pdo->prepare("
         SELECT m.sender_id, m.message_content, m.sent_at, m.is_read, u.full_name as sender_name, u.avatar_url as sender_avatar, u.role
         FROM Messages m
@@ -61,7 +62,6 @@ try {
 
 } catch (PDOException $e) {}
 
-// Hàm format thời gian rút gọn
 function timeAgo($datetime) {
     $time = strtotime($datetime);
     $diff = time() - $time;
@@ -90,11 +90,9 @@ function timeAgo($datetime) {
 
         .layout { display: flex; min-height: 100vh; overflow: hidden; }
         
-        /* SIDEBAR CHUẨN ĐỒNG BỘ */
         .sidebar { width: 260px; background: #ffffff; border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; min-height: 100vh; flex-shrink: 0; z-index: 10; }
         .sidebar-active { background-color: #eff6ff; color: #2563eb; border-left: 4px solid #2563eb; font-weight: 600; }
 
-        /* MAIN CONTENT */
         .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
         .topbar-wrapper { padding: 32px 40px 0 40px; }
         .topbar { 
@@ -106,7 +104,6 @@ function timeAgo($datetime) {
         .topbar h1 { font-size: 22px; font-weight: 600; color: #1f2937; margin: 0; }
         .content-area { padding: 0 40px 40px 40px; flex: 1; overflow-y: auto; }
         
-        /* Scrollbar */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
@@ -121,7 +118,6 @@ function timeAgo($datetime) {
         <div class="flex items-center gap-2 p-6 border-b">
             <i class="fa-solid fa-lungs text-3xl text-red-400"></i>
             <h1 class="text-xl font-semibold text-gray-700">Pneumo-<span class="text-blue-500">Care</span></h1>
-
         </div>
         <nav class="flex-1 px-4 py-6 space-y-2">
             <a href="pat_dashboard.php" class="sidebar-active flex items-center gap-4 px-4 py-3 rounded-xl transition-colors font-medium">
@@ -244,14 +240,14 @@ function timeAgo($datetime) {
 
                 <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden col-span-1 lg:col-span-2">
                     <div class="px-8 py-5 border-b border-gray-100 bg-gray-50/30 flex justify-between items-center">
-                        <h3 class="card-title text-yellow-600">Pending Fees <span class="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full ml-2"><?php echo count($pendingFees); ?></span></h3>
+                        <h3 class="card-title text-yellow-600">Upcoming Appointments Pending Payment <span class="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full ml-2"><?php echo count($pendingFees); ?></span></h3>
                     </div>
                     
                     <div class="p-8">
                         <?php if(empty($pendingFees)): ?>
                             <div class="text-center py-10 text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200">
-                                <i class="fa-solid fa-check-circle text-3xl text-green-300 mb-3 block"></i>
-                                <p class="font-medium italic">You have no pending fees. Great!</p>
+                                <i class="fa-solid fa-calendar-check text-3xl text-green-300 mb-3 block"></i>
+                                <p class="font-medium italic">You have no upcoming unpaid appointments. Great!</p>
                             </div>
                         <?php else: ?>
                             <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -270,17 +266,19 @@ function timeAgo($datetime) {
                                         
                                         <div class="mb-5">
                                             <p class="text-xs text-gray-500 font-medium bg-gray-50 inline-block px-3 py-1.5 rounded-md border border-gray-100">
-                                                <i class="fa-regular fa-calendar mr-1"></i> <?php echo date('d/m/Y', strtotime($fee['appointment_date'])); ?>
+                                                <i class="fa-regular fa-calendar mr-1"></i> <?php echo date('d/m/Y', strtotime($fee['appointment_date'])); ?> 
+                                                <span class="text-gray-300 mx-1">|</span> 
+                                                <i class="fa-regular fa-clock mr-1"></i> <?php echo date('h:i A', strtotime($fee['appointment_time'])); ?>
                                             </p>
                                         </div>
                                         
                                         <div class="mt-auto border-t border-dashed border-yellow-200 pt-4 flex items-center justify-between">
                                             <div>
-                                                <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Amount</p>
+                                                <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Consultation Fee</p>
                                                 <p class="text-lg font-extrabold text-yellow-600"><?php echo number_format($fee['consultation_fee']); ?> <span class="text-[10px] text-gray-500">VND</span></p>
                                             </div>
-                                            <button onclick="location.href='pat_payment.php?appt_id=<?php echo $fee['appointment_id']; ?>'" class="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-xs font-bold hover:bg-blue-700 transition-colors shadow-md uppercase tracking-wider">
-                                                Pay Now
+                                            <button onclick="location.href='pat_payment.php?appt_id=<?php echo $fee['appointment_id']; ?>'" class="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-xs font-bold hover:bg-blue-700 transition-colors shadow-md uppercase tracking-wider flex items-center gap-1.5">
+                                                <i class="fa-brands fa-cc-visa"></i> Pay Now
                                             </button>
                                         </div>
                                     </div>

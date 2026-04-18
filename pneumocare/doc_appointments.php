@@ -1,7 +1,7 @@
 <?php
+ob_start(); // BẮT BUỘC CÓ ĐỂ TỰ ĐỘNG CHUYỂN TRANG
 // ==========================================
 // TÊN FILE: doc_appointments.php
-// CHỨC NĂNG: Danh sách Lịch hẹn của Bác sĩ (Flow Khám bệnh chuẩn)
 // ==========================================
 session_start();
 require 'db.php';
@@ -23,14 +23,28 @@ if (isset($_GET['action']) && isset($_GET['appt_id'])) {
     
     try {
         if ($action === 'start') {
-            $stmt = $pdo->prepare("UPDATE Appointments SET status = 'In Progress' WHERE appointment_id = ? AND doctor_id = ?");
-            $stmt->execute([$apptId, $doctorId]);
+            $stmtCheck = $pdo->prepare("SELECT fee_status FROM Appointments WHERE appointment_id = ?");
+            $stmtCheck->execute([$apptId]);
+            $currentFeeStatus = trim($stmtCheck->fetchColumn());
+
+            if ($currentFeeStatus === 'Paid') {
+                $stmt = $pdo->prepare("UPDATE Appointments SET status = 'In Progress' WHERE appointment_id = ? AND doctor_id = ?");
+                $stmt->execute([$apptId, $doctorId]);
+                
+                // TỰ ĐỘNG NHẢY SANG TRANG AI WORKSPACE NGAY LẬP TỨC
+                header("Location: doc_ai_workspace.php?appt_id=" . $apptId);
+                exit();
+            } else {
+                header("Location: doc_appointments.php");
+                exit();
+            }
+            
         } elseif ($action === 'complete') {
             $stmt = $pdo->prepare("UPDATE Appointments SET status = 'Completed' WHERE appointment_id = ? AND doctor_id = ?");
             $stmt->execute([$apptId, $doctorId]);
+            header("Location: doc_appointments.php");
+            exit();
         }
-        header("Location: doc_appointments.php");
-        exit();
     } catch (PDOException $e) {
         die("Lỗi Database: " . $e->getMessage());
     }
@@ -40,7 +54,7 @@ $appointments = [];
 $completed = [];
 
 try {
-    // 2. LẤY LỊCH HẸN MỚI (Scheduled & In Progress)
+    // 2. LẤY LỊCH HẸN MỚI
     $stmtNew = $pdo->prepare("
         SELECT a.*, u_p.full_name as patient_name, u_p.avatar_url as p_avatar, pp.date_of_birth
         FROM Appointments a
@@ -52,7 +66,7 @@ try {
     $stmtNew->execute([$doctorId]);
     $appointments = $stmtNew->fetchAll();
 
-    // 3. LẤY LỊCH HẸN ĐÃ HOÀN THÀNH (Completed)
+    // 3. LẤY LỊCH HẸN ĐÃ HOÀN THÀNH
     $stmtDone = $pdo->prepare("
         SELECT a.*, u_p.full_name as patient_name, u_p.avatar_url as p_avatar, pp.date_of_birth
         FROM Appointments a
@@ -92,8 +106,6 @@ function calculateAge($birthDate) {
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-        
-        /* Tùy chỉnh input date để trông giống nút Filter */
         input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; opacity: 0.6; transition: 0.2s; }
         input[type="date"]::-webkit-calendar-picker-indicator:hover { opacity: 1; }
     </style>
@@ -107,33 +119,15 @@ function calculateAge($birthDate) {
         </div>
 
         <nav class="flex-1 px-4 py-6 space-y-1">
-            <a href="doc_dashboard.php" class="flex items-center gap-4 px-4 py-3 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors">
-                <i class="fa-solid fa-gauge-high w-5"></i>
-                <span>Dashboard</span>
-            </a>
-            <a href="doc_patient_list.php" class="flex items-center gap-4 px-4 py-3 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors">
-                <i class="fa-solid fa-users w-5"></i>
-                <span>Patient</span>
-            </a>
-            <a href="doc_appointments.php" class="sidebar-active flex items-center gap-4 px-4 py-3 rounded-lg font-medium">
-                <i class="fa-solid fa-calendar-check w-5"></i>
-                <span>Appointments</span>
-            </a>
-            <a href="doc_ai_workspace.php" class="flex items-center gap-4 px-4 py-3 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors">
-                <i class="fa-solid fa-brain w-5"></i>
-                <span>Diagnosis</span>
-            </a>
-            <a href="doc_messages.php" class="flex items-center gap-4 px-4 py-3 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors">
-                <i class="fa-solid fa-comment-dots w-5"></i>
-                <span>Messages</span>
-            </a>
+            <a href="doc_dashboard.php" class="flex items-center gap-4 px-4 py-3 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors"><i class="fa-solid fa-gauge-high w-5"></i><span>Dashboard</span></a>
+            <a href="doc_patient_list.php" class="flex items-center gap-4 px-4 py-3 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors"><i class="fa-solid fa-users w-5"></i><span>Patient</span></a>
+            <a href="doc_appointments.php" class="sidebar-active flex items-center gap-4 px-4 py-3 rounded-lg font-medium"><i class="fa-solid fa-calendar-check w-5"></i><span>Appointments</span></a>
+            <a href="doc_ai_workspace.php" class="flex items-center gap-4 px-4 py-3 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors"><i class="fa-solid fa-brain w-5"></i><span>Diagnosis</span></a>
+            <a href="doc_messages.php" class="flex items-center gap-4 px-4 py-3 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors"><i class="fa-solid fa-comment-dots w-5"></i><span>Messages</span></a>
         </nav>
 
         <div class="p-6 border-t mt-auto">
-            <a href="logout.php" class="flex items-center gap-4 text-gray-500 hover:text-red-500 transition-colors font-medium">
-                <i class="fa-solid fa-right-from-bracket"></i>
-                <span>Logout</span>
-            </a>
+            <a href="logout.php" class="flex items-center gap-4 text-gray-500 hover:text-red-500 transition-colors font-medium"><i class="fa-solid fa-right-from-bracket"></i><span>Logout</span></a>
         </div>
     </aside>
 
@@ -165,7 +159,6 @@ function calculateAge($birthDate) {
                         <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
                         <input type="text" id="searchInput" class="w-full bg-gray-50 border border-gray-100 focus:bg-white focus:border-blue-400 rounded-xl py-2.5 px-5 pl-11 text-sm outline-none transition-colors" placeholder="Search patient name...">
                     </div>
-                    
                     <div class="relative flex items-center">
                         <i class="fa-regular fa-calendar absolute left-4 text-gray-500 pointer-events-none"></i>
                         <input type="date" id="dateFilter" class="bg-white border border-gray-200 text-gray-700 pl-10 pr-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-gray-50 focus:outline-none focus:border-blue-400 transition-colors cursor-pointer">
@@ -180,8 +173,8 @@ function calculateAge($birthDate) {
                                 <th class="py-4 font-semibold w-[15%]">Date</th>
                                 <th class="py-4 font-semibold w-[30%]">Patient Name</th>
                                 <th class="py-4 font-semibold w-[10%]">Age</th>
-                                <th class="py-4 font-semibold w-[15%]">Status</th>
-                                <th class="py-4 font-semibold w-[18%]">Action</th>
+                                <th class="py-4 font-semibold w-[10%]">Status</th>
+                                <th class="py-4 font-semibold w-[23%] text-right pr-4">Action</th>
                             </tr>
                         </thead>
                         <tbody id="appointmentTable">
@@ -197,7 +190,6 @@ function calculateAge($birthDate) {
                                         </div>
                                     </td>
                                     <td class="py-5 text-gray-600 font-medium"><?php echo calculateAge($appt['date_of_birth']); ?></td>
-                                    
                                     <td class="py-5">
                                         <?php if ($appt['status'] == 'Scheduled'): ?>
                                             <span class="px-3 py-1 bg-yellow-50 text-yellow-600 rounded-md text-[10px] font-extrabold uppercase tracking-widest border border-yellow-100">Scheduled</span>
@@ -205,22 +197,28 @@ function calculateAge($birthDate) {
                                             <span class="px-3 py-1 bg-blue-50 text-blue-600 rounded-md text-[10px] font-extrabold uppercase tracking-widest border border-blue-100">In Progress</span>
                                         <?php endif; ?>
                                     </td>
-                                    
-                                    <td class="py-5">
-                                        <div class="flex items-center gap-4 text-sm font-bold">
+                                    <td class="py-5 text-right pr-4">
+                                        <div class="flex items-center justify-end gap-4 text-sm font-bold">
                                             <a href="doc_medical_record.php?patient_id=<?php echo $appt['patient_id']; ?>" title="View Medical Record" class="text-gray-400 hover:text-blue-600 transition-colors">
                                                 <i class="fa-regular fa-file-lines text-lg"></i>
                                             </a>
 
                                             <?php if ($appt['status'] == 'Scheduled'): ?>
-                                                <a href="?action=start&appt_id=<?php echo $appt['appointment_id']; ?>" class="text-blue-600 hover:text-blue-800 transition-colors flex items-center gap-1.5">
-                                                    <i class="fa-solid fa-play text-xs"></i> Start Exam
-                                                </a>
+                                                <?php if ($appt['fee_status'] === 'Paid'): ?>
+                                                    <a href="?action=start&appt_id=<?php echo $appt['appointment_id']; ?>" class="text-blue-600 hover:text-blue-800 transition-colors flex items-center gap-1.5 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100">
+                                                        <i class="fa-solid fa-play text-xs"></i> Start Exam
+                                                    </a>
+                                                <?php else: ?>
+                                                    <span class="text-red-500 font-bold text-[10px] uppercase tracking-widest bg-red-50 px-3 py-1.5 rounded-lg border border-red-100 flex items-center gap-1.5 cursor-not-allowed">
+                                                        <i class="fa-solid fa-triangle-exclamation text-xs"></i> Pending Payment
+                                                    </span>
+                                                <?php endif; ?>
+                                                
                                             <?php elseif ($appt['status'] == 'In Progress'): ?>
-                                                <a href="doc_ai_workspace.php?patient_id=<?php echo $appt['patient_id']; ?>" class="text-blue-600 hover:underline transition-colors">
-                                                    AI Diagnosis
+                                                <a href="doc_ai_workspace.php?appt_id=<?php echo $appt['appointment_id']; ?>" class="text-blue-600 hover:underline transition-colors flex items-center gap-1.5 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100">
+                                                    <i class="fa-solid fa-brain"></i> AI Diagnosis
                                                 </a>
-                                                <a href="?action=complete&appt_id=<?php echo $appt['appointment_id']; ?>" class="text-blue-600 hover:underline transition-colors border-l pl-4 border-gray-200" onclick="return confirm('Xác nhận hoàn thành cuộc khám?')">
+                                                <a href="?action=complete&appt_id=<?php echo $appt['appointment_id']; ?>" class="text-emerald-600 hover:text-white hover:bg-emerald-600 transition-colors bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200" onclick="return confirm('Xác nhận hoàn thành cuộc khám?')">
                                                     Complete
                                                 </a>
                                             <?php endif; ?>
@@ -243,18 +241,17 @@ function calculateAge($birthDate) {
                                     <td class="py-5">
                                         <span class="px-3 py-1 bg-gray-100 text-gray-500 rounded-md text-[10px] font-extrabold uppercase tracking-widest border border-gray-200">Done</span>
                                     </td>
-                                    <td class="py-5">
-                                        <a href="doc_medical_record.php?patient_id=<?php echo $row['patient_id']; ?>" class="text-blue-600 hover:text-blue-800 font-bold text-sm transition-colors flex items-center gap-1.5">
-                                            <i class="fa-regular fa-file-lines"></i> View Record
-                                        </a>
+                                    <td class="py-5 text-right pr-4">
+                                        <div class="flex items-center justify-end">
+                                            <a href="doc_medical_record.php?patient_id=<?php echo $row['patient_id']; ?>" class="text-blue-600 hover:text-blue-800 font-bold text-sm transition-colors flex items-center gap-1.5">
+                                                <i class="fa-regular fa-file-lines"></i> View Record
+                                            </a>
+                                        </div>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
 
                             <tr id="empty-msg" class="hide"><td colspan="6" class="py-10 text-center text-gray-400 italic">No appointments match your filter.</td></tr>
-                            <?php if(empty($appointments) && empty($completed)): ?>
-                                <tr id="empty-all"><td colspan="6" class="py-10 text-center text-gray-400 italic">No appointments found.</td></tr>
-                            <?php endif; ?>
                         </tbody>
                     </table>
                 </div>
@@ -263,7 +260,6 @@ function calculateAge($birthDate) {
                     <span class="mr-4 cursor-pointer text-gray-400 hover:text-gray-700 font-medium transition-colors">Previous</span>
                     <span class="w-8 h-8 flex items-center justify-center bg-blue-500 text-white rounded-full shadow-sm font-semibold cursor-pointer">1</span>
                     <span class="w-8 h-8 flex items-center justify-center text-gray-600 hover:bg-gray-100 rounded-full font-medium cursor-pointer transition-colors">2</span>
-                    <span class="w-8 h-8 flex items-center justify-center text-gray-600 hover:bg-gray-100 rounded-full font-medium cursor-pointer transition-colors">3</span>
                     <span class="ml-4 cursor-pointer text-gray-600 hover:text-gray-900 font-medium transition-colors">Next</span>
                 </div>
             </div>
@@ -271,13 +267,11 @@ function calculateAge($birthDate) {
     </main>
 
     <script>
-        let currentTab = 0; // 0: New, 1: Completed
-
+        let currentTab = 0;
         function switchTab(tab) {
             currentTab = tab;
             const newTab = document.getElementById('tab-new');
             const completedTab = document.getElementById('tab-completed');
-            
             if (tab === 0) {
                 newTab.className = 'tab-active px-4 pb-4 text-sm uppercase tracking-wide transition-all';
                 completedTab.className = 'px-4 pb-4 text-sm font-semibold text-gray-400 hover:text-gray-600 uppercase tracking-wide transition-all';
@@ -285,7 +279,6 @@ function calculateAge($birthDate) {
                 completedTab.className = 'tab-active px-4 pb-4 text-sm uppercase tracking-wide transition-all';
                 newTab.className = 'px-4 pb-4 text-sm font-semibold text-gray-400 hover:text-gray-600 uppercase tracking-wide transition-all';
             }
-            
             runFilters();
         }
 
@@ -295,7 +288,6 @@ function calculateAge($birthDate) {
         function runFilters() {
             const searchTerm = document.getElementById('searchInput').value.toLowerCase();
             const dateTerm = document.getElementById('dateFilter').value;
-            
             const newRows = document.querySelectorAll('.row-new');
             const completedRows = document.querySelectorAll('.row-completed');
             let visibleCount = 0;
@@ -303,16 +295,10 @@ function calculateAge($birthDate) {
             function checkRow(row) {
                 const name = row.querySelector('td:nth-child(3)').textContent.toLowerCase();
                 const rowDate = row.getAttribute('data-date');
-                
                 let matchesName = name.includes(searchTerm);
                 let matchesDate = (dateTerm === "") ? true : (rowDate === dateTerm);
-                
-                if (matchesName && matchesDate) {
-                    row.classList.remove('hide');
-                    visibleCount++;
-                } else {
-                    row.classList.add('hide');
-                }
+                if (matchesName && matchesDate) { row.classList.remove('hide'); visibleCount++; } 
+                else { row.classList.add('hide'); }
             }
 
             if (currentTab === 0) {
@@ -324,13 +310,9 @@ function calculateAge($birthDate) {
             }
 
             const emptyMsg = document.getElementById('empty-msg');
-            const emptyAll = document.getElementById('empty-all');
-            if (!emptyAll) {
-                if (visibleCount === 0) emptyMsg.classList.remove('hide');
-                else emptyMsg.classList.add('hide');
-            }
+            if (visibleCount === 0) emptyMsg.classList.remove('hide');
+            else emptyMsg.classList.add('hide');
         }
-        
         switchTab(0);
     </script>
 </body>

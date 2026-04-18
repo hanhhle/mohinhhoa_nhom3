@@ -133,9 +133,6 @@ $afternoon_slots = ['13:30', '15:00'];
             <header class="topbar">
             <h1>Pick Doctor & Schedule</h1>
             <div class="flex items-center gap-6">
-                <div class="relative cursor-pointer text-gray-400 hover:text-gray-600 transition-colors">
-                    <span class="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
-                </div>
                 <div class="flex items-center gap-3 cursor-pointer">
                     <div class="text-right hidden sm:block">
                         <p class="text-sm font-semibold text-gray-800" style="line-height: 1.2;"><?php echo htmlspecialchars($patientName); ?></p>

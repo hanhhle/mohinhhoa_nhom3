@@ -1,7 +1,7 @@
 <?php
 // ==========================================
 // TÊN FILE: doc_messages.php
-// CHỨC NĂNG: Nhắn tin (Có fix Logo Lá Phổi chuẩn + Nút Upload File/Ảnh)
+// CHỨC NĂNG: Nhắn tin (ĐÃ FIX LOGIC: Bác sĩ chỉ được nhắn cho Admin và Bệnh nhân của mình)
 // ==========================================
 session_start();
 require 'db.php';
@@ -19,11 +19,39 @@ $doctorAvatar = (!empty($_SESSION['avatar']) && $_SESSION['avatar'] != 'default.
 
 $receiverId = isset($_GET['receiver_id']) ? $_GET['receiver_id'] : null;
 
+// ========================================================
+// [BUSINESS LAYER] LỚP BẢO MẬT: KIỂM TRA QUYỀN NHẮN TIN
+// ========================================================
+$isAuthorized = false;
+if ($receiverId) {
+    $stmtCheck = $pdo->prepare("SELECT role FROM Users WHERE user_id = ?");
+    $stmtCheck->execute([$receiverId]);
+    $recRole = $stmtCheck->fetchColumn();
+
+    if ($recRole === 'Admin') {
+        $isAuthorized = true; // Luôn được phép nhắn cho Admin
+    } elseif ($recRole === 'Patient') {
+        // Chỉ cho phép nếu bệnh nhân này có ít nhất 1 lịch hẹn với Bác sĩ này
+        $stmtAptCheck = $pdo->prepare("SELECT 1 FROM Appointments WHERE doctor_id = ? AND patient_id = ? LIMIT 1");
+        $stmtAptCheck->execute([$doctorId, $receiverId]);
+        if ($stmtAptCheck->fetchColumn()) {
+            $isAuthorized = true; // Có tồn tại lịch khám -> Hợp lệ
+        }
+    }
+    
+    // Nếu cố tình sửa ID trên URL sang một bệnh nhân lạ -> Đá văng về trang gốc
+    if (!$isAuthorized) {
+        header("Location: doc_messages.php");
+        exit();
+    }
+}
+// ========================================================
+
 // 2. Xử lý Gửi tin nhắn & Upload File
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && $receiverId) {
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && $receiverId && $isAuthorized) {
     $msgText = isset($_POST['message_content']) ? trim($_POST['message_content']) : '';
     
-    // Xử lý nôm na tên file để thêm vào tin nhắn (Prototype UI)
+    // Xử lý nôm na tên file để thêm vào tin nhắn
     if (isset($_FILES['attachment_file']) && $_FILES['attachment_file']['error'] == UPLOAD_ERR_OK) {
         $fileName = $_FILES['attachment_file']['name'];
         $msgText .= ($msgText !== '' ? "\n" : "") . "📎 [Đã đính kèm tệp: " . $fileName . "]";
@@ -46,7 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && $receiverId) {
 }
 
 // 3. Đánh dấu đã đọc
-if ($receiverId) {
+if ($receiverId && $isAuthorized) {
     try {
         $stmtRead = $pdo->prepare("UPDATE Messages SET is_read = 1 WHERE sender_id = ? AND receiver_id = ?");
         $stmtRead->execute([$receiverId, $doctorId]);
@@ -59,7 +87,7 @@ $receiverName = "";
 $receiverRole = "";
 
 try {
-    // 4. Lấy danh sách chat (Kèm đếm tin nhắn chưa đọc)
+    // 4. Lấy danh sách sidebar (Chỉ bao gồm Admin và Bệnh nhân của bác sĩ này)
     $stmtList = $pdo->prepare("
         SELECT 
             u.user_id, u.full_name, u.avatar_url, u.role,
@@ -70,23 +98,25 @@ try {
             (SELECT COUNT(*) FROM Messages 
              WHERE sender_id = u.user_id AND receiver_id = :doc3 AND is_read = 0) as unread_count
         FROM Users u
-        WHERE u.user_id IN (
-            SELECT sender_id FROM Messages WHERE receiver_id = :doc4
-            UNION
-            SELECT receiver_id FROM Messages WHERE sender_id = :doc5
-        ) AND u.user_id != :doc6
-        ORDER BY (SELECT MAX(sent_at) FROM Messages WHERE (sender_id = u.user_id AND receiver_id = :doc7) OR (sender_id = :doc8 AND receiver_id = u.user_id)) DESC
+        WHERE u.user_id != :doc4 
+          AND (
+              u.role = 'Admin' 
+              OR (u.role = 'Patient' AND EXISTS (SELECT 1 FROM Appointments WHERE doctor_id = :doc5 AND patient_id = u.user_id))
+          )
+        ORDER BY 
+            (SELECT MAX(sent_at) FROM Messages WHERE (sender_id = u.user_id AND receiver_id = :doc6) OR (sender_id = :doc7 AND receiver_id = u.user_id)) DESC,
+            u.full_name ASC
     ");
     $stmtList->execute([
         ':doc1' => $doctorId, ':doc2' => $doctorId, 
         ':doc3' => $doctorId, ':doc4' => $doctorId, 
         ':doc5' => $doctorId, ':doc6' => $doctorId,
-        ':doc7' => $doctorId, ':doc8' => $doctorId
+        ':doc7' => $doctorId
     ]);
     $chatList = $stmtList->fetchAll();
 
     // 5. Lấy nội dung hội thoại
-    if ($receiverId) {
+    if ($receiverId && $isAuthorized) {
         $stmtMsg = $pdo->prepare("
             SELECT * FROM Messages 
             WHERE (sender_id = ? AND receiver_id = ?) 
@@ -129,7 +159,7 @@ try {
 </head>
 <body class="flex h-screen overflow-hidden text-gray-800">
 
-    <aside class="w-64 bg-white border-r border-gray-100 flex flex-col h-full shadow-sm">
+    <aside class="w-64 bg-white border-r border-gray-100 flex flex-col h-full shadow-sm flex-shrink-0 z-10">
         <div class="flex items-center gap-2 p-6 border-b">
             <i class="fa-solid fa-lungs text-3xl text-red-400"></i>
             <h1 class="text-xl font-semibold text-gray-700">Pneumo-<span class="text-blue-500">Care</span></h1>
@@ -137,31 +167,25 @@ try {
 
         <nav class="flex-1 px-4 py-6 space-y-1">
             <a href="doc_dashboard.php" class="flex items-center gap-4 px-4 py-3 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors">
-                <i class="fa-solid fa-gauge-high w-5"></i>
-                <span>Dashboard</span>
+                <i class="fa-solid fa-gauge-high w-5"></i><span>Dashboard</span>
             </a>
             <a href="doc_patient_list.php" class="flex items-center gap-4 px-4 py-3 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors">
-                <i class="fa-solid fa-users w-5"></i>
-                <span>Patient</span>
+                <i class="fa-solid fa-users w-5"></i><span>Patient</span>
             </a>
             <a href="doc_appointments.php" class="flex items-center gap-4 px-4 py-3 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors">
-                <i class="fa-solid fa-calendar-check w-5"></i>
-                <span>Appointments</span>
+                <i class="fa-solid fa-calendar-check w-5"></i><span>Appointments</span>
             </a>
             <a href="doc_ai_workspace.php" class="flex items-center gap-4 px-4 py-3 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors">
-                <i class="fa-solid fa-brain w-5"></i>
-                <span>Diagnosis</span>
+                <i class="fa-solid fa-brain w-5"></i><span>Diagnosis</span>
             </a>
             <a href="doc_messages.php" class="sidebar-active flex items-center gap-4 px-4 py-3 rounded-lg font-medium">
-                <i class="fa-solid fa-comment-dots w-5"></i>
-                <span>Messages</span>
+                <i class="fa-solid fa-comment-dots w-5"></i><span>Messages</span>
             </a>
         </nav>
 
         <div class="p-6 border-t mt-auto">
             <a href="logout.php" class="flex items-center gap-4 text-gray-500 hover:text-red-500 transition-colors font-medium">
-                <i class="fa-solid fa-right-from-bracket"></i>
-                <span>Logout</span>
+                <i class="fa-solid fa-right-from-bracket"></i><span>Logout</span>
             </a>
         </div>
     </aside>
@@ -223,7 +247,7 @@ try {
                                         </div>
                                     </div>
                                     <p class="text-xs truncate <?php echo $chat['unread_count'] > 0 ? 'font-bold text-gray-900' : 'text-gray-500'; ?>">
-                                        <?php echo $chat['last_message'] ? htmlspecialchars($chat['last_message']) : 'Nhấp để xem hội thoại...'; ?>
+                                        <?php echo $chat['last_message'] ? htmlspecialchars($chat['last_message']) : 'Nhấp để bắt đầu trò chuyện...'; ?>
                                     </p>
                                 </div>
                             </a>
@@ -233,7 +257,7 @@ try {
                 </div>
 
                 <div class="flex-1 flex flex-col bg-[#f8fafc]/50 relative">
-                    <?php if ($receiverId): ?>
+                    <?php if ($receiverId && $isAuthorized): ?>
                         
                         <div class="h-[72px] bg-white border-b border-gray-100 px-8 flex items-center justify-between flex-shrink-0">
                             <div class="flex items-center gap-3">

@@ -1,7 +1,7 @@
 <?php
 // ==========================================
 // TÊN FILE: adm_appointments_completed.php
-// CHỨC NĂNG: Xem lịch sử khám đã xong và nhắc thanh toán
+// CHỨC NĂNG: Xem lịch sử khám đã xong (Bao gồm cả Completed và Cancelled)
 // ==========================================
 session_start();
 require 'db.php';
@@ -16,14 +16,14 @@ $adminName = $_SESSION['name'];
 $completed = [];
 
 try {
-    // 2. Truy vấn lịch hẹn đã hoàn thành + lấy thêm patient_id để gửi tin nhắn
+    // 2. Truy vấn lịch hẹn đã hoàn thành HOẶC đã hủy (Completed, Cancelled)
     $stmt = $pdo->prepare("
         SELECT a.*, u_p.user_id as patient_id, u_p.full_name as p_name, u_p.avatar_url as p_avatar, pp.date_of_birth, u_d.full_name as d_name
         FROM Appointments a
         JOIN Users u_p ON a.patient_id = u_p.user_id
         JOIN Patient_Profiles pp ON u_p.user_id = pp.patient_id
         JOIN Users u_d ON a.doctor_id = u_d.user_id
-        WHERE a.status = 'Completed'
+        WHERE a.status IN ('Completed', 'Cancelled')
         ORDER BY a.appointment_date DESC, a.appointment_time DESC
     ");
     $stmt->execute();
@@ -144,18 +144,17 @@ $adminAvatar = (!empty($_SESSION['avatar']) && $_SESSION['avatar'] != 'default.p
                     <table class="w-full text-left text-sm mt-4">
                         <thead class="text-gray-400 border-b border-gray-100 uppercase text-[11px] tracking-widest">
                             <tr>
-                                <th class="py-4 font-semibold w-[10%]">Time</th>
-                                <th class="py-4 font-semibold w-[12%]">Date</th>
-                                <th class="py-4 font-semibold w-[22%]">Patient Name</th>
-                                <th class="py-4 font-semibold w-[8%] text-center">Age</th>
-                                <th class="py-4 font-semibold w-[18%]">Doctor</th>
-                                <th class="py-4 font-semibold w-[12%]">Fee Status</th>
-                                <th class="py-4 font-semibold w-[18%] text-right pr-4">Action</th>
+                                <th class="py-4 font-semibold w-[12%]">Time</th>
+                                <th class="py-4 font-semibold w-[15%]">Date</th>
+                                <th class="py-4 font-semibold w-[25%]">Patient Name</th>
+                                <th class="py-4 font-semibold w-[10%] text-center">Age</th>
+                                <th class="py-4 font-semibold w-[20%]">Doctor</th>
+                                <th class="py-4 font-semibold w-[18%] text-right pr-4">Status</th>
                             </tr>
                         </thead>
                         <tbody class="text-gray-600">
                             <?php if (empty($completed)): ?>
-                                <tr><td colspan="7" class="py-16 text-center text-gray-400 italic">No completed appointments found.</td></tr>
+                                <tr><td colspan="6" class="py-16 text-center text-gray-400 italic">No completed appointments found.</td></tr>
                             <?php else: ?>
                                 <?php foreach ($completed as $row): ?>
                                     <?php 
@@ -178,22 +177,15 @@ $adminAvatar = (!empty($_SESSION['avatar']) && $_SESSION['avatar'] != 'default.p
                                         </td>
                                         <td class="py-4 text-gray-500 text-sm text-center font-medium"><?php echo calculateAge($row['date_of_birth']); ?></td>
                                         <td class="py-4 text-gray-600 text-sm font-medium">Dr. <?php echo htmlspecialchars($row['d_name']); ?> </td>
-                                        <td class="py-4">
-                                            <?php if($row['fee_status'] == 'Paid'): ?>
-                                                <span class="bg-green-50 text-green-600 border border-green-100 px-3 py-1.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest shadow-sm">Paid</span>
-                                            <?php else: ?>
-                                                <span class="bg-red-50 text-red-500 border border-red-100 px-3 py-1.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest shadow-sm">Unpaid</span>
-                                            <?php endif; ?>
-                                        </td>
                                         <td class="py-4 text-right pr-4">
-                                            <?php if($row['fee_status'] == 'Unpaid'): ?>
-                                                <a href="adm_messages.php?receiver_id=<?php echo $row['patient_id']; ?>" 
-                                                   class="inline-flex items-center justify-end gap-2 text-blue-600 hover:text-blue-800 font-bold text-[11px] uppercase tracking-widest transition-all group whitespace-nowrap"
-                                                   title="Send a message to remind payment">
-                                                    Request Fee <i class="fa-solid fa-paper-plane text-[10px] transform group-hover:translate-x-1 transition-transform"></i>
-                                                </a>
-                                            <?php else: ?>
-                                                <span class="text-gray-300 italic text-[11px] font-bold uppercase tracking-widest cursor-default whitespace-nowrap"><i class="fa-solid fa-check-double mr-1"></i> Settled</span>
+                                            <?php if($row['status'] == 'Completed'): ?>
+                                                <span class="text-emerald-500 bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-widest cursor-default whitespace-nowrap inline-flex items-center shadow-sm">
+                                                    <i class="fa-solid fa-check-double mr-1.5"></i> Settled
+                                                </span>
+                                            <?php elseif($row['status'] == 'Cancelled'): ?>
+                                                <span class="text-red-500 bg-red-50 border border-red-100 px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-widest cursor-default whitespace-nowrap inline-flex items-center shadow-sm">
+                                                    <i class="fa-solid fa-ban mr-1.5"></i> Cancelled
+                                                </span>
                                             <?php endif; ?>
                                         </td>
                                     </tr>

@@ -11,7 +11,7 @@ def predict():
     if 'file' not in request.files:
         return jsonify({'error': 'No file uploaded'}), 400
         
-    # 1. Giả lập AI đang "đọc" ảnh mất 2 giây
+    # 1. Giả lập AI đang "đọc" ảnh mất 2 giây - python3 app.py
     time.sleep(2)
     
     # 2. Random kết quả chẩn đoán

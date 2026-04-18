@@ -1,7 +1,7 @@
 <?php
 // ==========================================
 // TÊN FILE: adm_dashboard.php
-// CHỨC NĂNG: Tổng quan hệ thống cho Admin
+// CHỨC NĂNG: Tổng quan hệ thống cho Admin (Cập nhật Luồng Thanh toán trước)
 // ==========================================
 session_start();
 require 'db.php';
@@ -24,7 +24,6 @@ $adminAvatar = (!empty($_SESSION['avatar']) && $_SESSION['avatar'] != 'default.p
 // 2. Khởi tạo biến mặc định
 $totalAppointments = 0;
 $newPatients = 0;
-$labTests = 50; // Giá trị Demo theo code cũ của bạn
 $newAppointmentsList = [];
 $pendingFees = [];
 
@@ -32,8 +31,7 @@ try {
     // Lấy số liệu Tổng quan (Chỉ đếm các lịch hẹn ở trạng thái Scheduled)
     $totalAppointments = $pdo->query("SELECT COUNT(*) FROM Appointments WHERE status = 'Scheduled'")->fetchColumn();
 
-    // Lấy số bệnh nhân mới trong 30 ngày (Giả định bạn có cột created_at trong bảng Users)
-    // Nếu bảng Users không có created_at, ta chỉ đếm tổng số Patient
+    // Lấy số bệnh nhân mới trong 30 ngày
     $checkColumn = $pdo->query("SHOW COLUMNS FROM Users LIKE 'created_at'")->rowCount();
     if ($checkColumn > 0) {
         $newPatients = $pdo->query("SELECT COUNT(*) FROM Users WHERE role = 'Patient' AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)")->fetchColumn();
@@ -55,15 +53,14 @@ try {
     ");
     $newAppointmentsList = $stmtAppt->fetchAll();
 
-    // Lấy danh sách Patient Fee Pending (Gom nhóm theo Bệnh nhân)
+    // LẤY DANH SÁCH LỊCH CHỜ THANH TOÁN (Scheduled & Unpaid)
     $stmtFee = $pdo->query("
-        SELECT u_p.full_name as patient_name, u_p.avatar_url, u_p.user_id, COUNT(a.appointment_id) as unpaid_bills
+        SELECT u_p.full_name as patient_name, u_p.avatar_url, u_p.user_id, a.appointment_date, a.appointment_time
         FROM Appointments a
         JOIN Users u_p ON a.patient_id = u_p.user_id
-        WHERE a.status = 'Completed' AND a.fee_status = 'Unpaid'
-        GROUP BY u_p.user_id
-        ORDER BY unpaid_bills DESC
-        LIMIT 5
+        WHERE a.status = 'Scheduled' AND a.fee_status = 'Unpaid'
+        ORDER BY a.appointment_date ASC, a.appointment_time ASC
+        LIMIT 6
     ");
     $pendingFees = $stmtFee->fetchAll();
 
@@ -89,11 +86,9 @@ try {
 
         .layout { display: flex; min-height: 100vh; overflow: hidden; }
         
-        /* SIDEBAR CHUẨN ĐỒNG BỘ */
         .sidebar { width: 260px; background: #ffffff; border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; min-height: 100vh; flex-shrink: 0; z-index: 10; }
         .sidebar-active { background-color: #eff6ff; color: #2563eb; border-left: 4px solid #2563eb; font-weight: 600; }
 
-        /* MAIN CONTENT */
         .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
         .topbar-wrapper { padding: 32px 40px 0 40px; }
         .topbar { 
@@ -105,7 +100,6 @@ try {
         .topbar h1 { font-size: 22px; font-weight: 600; color: #1f2937; margin: 0; }
         .content-area { padding: 0 40px 40px 40px; flex: 1; overflow-y: auto; }
 
-        /* Scrollbar */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
@@ -229,16 +223,16 @@ try {
                     <div class="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden">
                         <div class="px-8 py-5 border-b border-gray-100 bg-gray-50/30 flex justify-between items-center">
                             <h3 class="font-bold text-[#003366] text-[13px] uppercase tracking-widest flex items-center gap-2">
-                                <i class="fa-solid fa-file-invoice-dollar text-red-500 text-lg"></i> Outstanding Payments
+                                <i class="fa-solid fa-file-invoice-dollar text-red-500 text-lg"></i> Pending Payments (Upcoming)
                             </h3>
-                            <a href="adm_appointments_completed.php" class="text-xs font-bold text-blue-500 hover:text-blue-700 uppercase tracking-wider transition-colors">Manage Fees</a>
+                            <a href="adm_appointments.php" class="text-xs font-bold text-blue-500 hover:text-blue-700 uppercase tracking-wider transition-colors">Collect Fees</a>
                         </div>
                         
                         <div class="p-8 pt-4">
                             <?php if(empty($pendingFees)): ?>
                                 <div class="text-center py-8 text-green-500 italic bg-green-50/50 rounded-xl border border-dashed border-green-200 font-medium">
                                     <i class="fa-regular fa-face-smile-beam text-2xl mb-2 block"></i>
-                                    All patient fees have been settled.
+                                    All upcoming appointments are paid.
                                 </div>
                             <?php else: ?>
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -248,7 +242,7 @@ try {
                                             <img src="<?php echo $fee['avatar_url'] ?: 'img/default.png'; ?>" class="w-10 h-10 rounded-full object-cover border border-white shadow-sm">
                                             <div>
                                                 <p class="text-sm font-bold text-gray-800"><?php echo htmlspecialchars($fee['patient_name']); ?></p>
-                                                <p class="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mt-0.5">Owes: <span class="text-red-500 font-bold"><?php echo $fee['unpaid_bills']; ?> bill(s)</span></p>
+                                                <p class="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mt-0.5">Appt: <span class="text-red-500 font-bold"><?php echo date('d/m/Y - h:i A', strtotime($fee['appointment_date'] . ' ' . $fee['appointment_time'])); ?></span></p>
                                             </div>
                                         </div>
                                         

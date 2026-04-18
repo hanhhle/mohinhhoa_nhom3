@@ -1,7 +1,7 @@
 <?php
 // ==========================================
 // TÊN FILE: pat_appointments.php
-// CHỨC NĂNG: Quản lý lịch khám (Đặt mới, Dời lịch, Hủy lịch, Thanh toán)
+// CHỨC NĂNG: Quản lý lịch khám (Đặt mới, Dời lịch, Hủy lịch có điều kiện 2 tiếng, Thanh toán)
 // ==========================================
 session_start();
 require 'db.php';
@@ -14,7 +14,7 @@ $patientAvatar = (!empty($_SESSION['avatar']) && $_SESSION['avatar'] != 'default
 
 $appointments = [];
 $rescheduleData = null;
-$payData = null; // Biến mới để lưu thông tin cần thanh toán
+$payData = null; 
 $booked_slots = [];
 $msg = "";
 
@@ -24,12 +24,36 @@ $selected_date = isset($_GET['new_date']) ? $_GET['new_date'] : null;
 $pay_id = isset($_GET['pay_id']) ? $_GET['pay_id'] : null;
 
 try {
-    // 2. XỬ LÝ HỦY LỊCH KHÁM (CANCEL)
+    // ==========================================
+    // 2. XỬ LÝ HỦY LỊCH KHÁM (CANCEL) VỚI ĐIỀU KIỆN TRƯỚC 2 TIẾNG
+    // ==========================================
     if (isset($_GET['cancel_id'])) {
         $c_id = $_GET['cancel_id'];
-        $stmtCancel = $pdo->prepare("UPDATE Appointments SET status = 'Cancelled' WHERE appointment_id = ? AND patient_id = ?");
-        $stmtCancel->execute([$c_id, $patientId]);
-        $msg = "<div class='bg-red-50 text-red-600 p-4 rounded-xl mb-6 border border-red-200 text-sm font-medium flex items-center gap-2'><i class='fa-solid fa-circle-xmark'></i> Appointment has been cancelled.</div>";
+        
+        // Bước 1: Lấy thông tin thời gian của lịch hẹn cần hủy
+        $stmtCheckTime = $pdo->prepare("SELECT appointment_date, appointment_time FROM Appointments WHERE appointment_id = ? AND patient_id = ? AND status = 'Scheduled'");
+        $stmtCheckTime->execute([$c_id, $patientId]);
+        $apptData = $stmtCheckTime->fetch();
+
+        if ($apptData) {
+            // Bước 2: Tính toán khoảng cách thời gian
+            date_default_timezone_set('Asia/Ho_Chi_Minh'); // Set timezone chuẩn
+            $now = new DateTime();
+            $apptDateTime = new DateTime($apptData['appointment_date'] . ' ' . $apptData['appointment_time']);
+            
+            // Tính số phút chênh lệch
+            $intervalMinutes = ($apptDateTime->getTimestamp() - $now->getTimestamp()) / 60;
+
+            if ($intervalMinutes >= 120) {
+                // Đủ điều kiện hủy (Trước 2 tiếng)
+                $stmtCancel = $pdo->prepare("UPDATE Appointments SET status = 'Cancelled' WHERE appointment_id = ? AND patient_id = ?");
+                $stmtCancel->execute([$c_id, $patientId]);
+                $msg = "<div class='bg-emerald-50 text-emerald-600 p-4 rounded-xl mb-6 border border-emerald-200 text-sm font-medium flex items-center gap-2 shadow-sm'><i class='fa-solid fa-circle-check'></i> The appointment has been successfully canceled.</div>";
+            } else {
+                // Vi phạm điều kiện
+                $msg = "<div class='bg-red-50 text-red-600 p-4 rounded-xl mb-6 border border-red-200 text-sm font-medium flex items-center gap-2 shadow-sm'><i class='fa-solid fa-circle-exclamation'></i> <b>Cannot cancel appointment!</b> The time until the appointment is less than 2 hours. Please contact the reception directly.</div>";
+            }
+        }
     }
 
     // 3. XỬ LÝ CẬP NHẬT RESCHEDULE (POST)
@@ -40,7 +64,7 @@ try {
 
         $stmtUp = $pdo->prepare("UPDATE Appointments SET appointment_date = ?, appointment_time = ? WHERE appointment_id = ? AND patient_id = ?");
         $stmtUp->execute([$n_date, $n_time, $r_id, $patientId]);
-        $msg = "<div class='bg-green-50 text-green-600 p-4 rounded-xl mb-6 border border-green-200 text-sm font-medium flex items-center gap-2'><i class='fa-solid fa-circle-check'></i> Appointment successfully rescheduled!</div>";
+        $msg = "<div class='bg-green-50 text-green-600 p-4 rounded-xl mb-6 border border-green-200 text-sm font-medium flex items-center gap-2 shadow-sm'><i class='fa-solid fa-circle-check'></i> Appointment successfully rescheduled!</div>";
         $reschedule_id = null;
     }
 
@@ -50,7 +74,7 @@ try {
         // Đánh dấu là sẽ trả tiền mặt (Giữ nguyên Unpaid để lễ tân thu tiền lúc đến)
         $stmtCash = $pdo->prepare("UPDATE Appointments SET payment_method = 'Tiền mặt' WHERE appointment_id = ? AND patient_id = ?");
         $stmtCash->execute([$p_id, $patientId]);
-        $msg = "<div class='bg-blue-50 text-blue-600 p-4 rounded-xl mb-6 border border-blue-200 text-sm font-medium flex items-center gap-2'><i class='fa-solid fa-circle-info'></i> Payment method set to Cash. Please pay at the clinic.</div>";
+        $msg = "<div class='bg-blue-50 text-blue-600 p-4 rounded-xl mb-6 border border-blue-200 text-sm font-medium flex items-center gap-2 shadow-sm'><i class='fa-solid fa-circle-info'></i> Payment method set to Cash. Please pay at the clinic.</div>";
         $pay_id = null;
     }
 
@@ -118,11 +142,11 @@ $available_slots = ['09:00', '10:30', '13:30', '15:00'];
         .data-table th { font-size: 12px; color: #6b7280; font-weight: 600; padding: 14px 16px; border-bottom: 1px solid #e5e7eb; text-align: left; text-transform: uppercase; letter-spacing: 0.5px; }
         .data-table td { padding: 16px 16px; font-size: 14px; border-bottom: 1px solid #f3f4f6; color: #374151; }
         
-        .btn-reschedule { border: 1px solid #e5e7eb; color: #374151; font-size: 13px; font-weight: 500; padding: 6px 14px; border-radius: 6px; transition: 0.2s; text-decoration: none; }
+        .btn-reschedule { border: 1px solid #e5e7eb; color: #374151; font-size: 13px; font-weight: 500; padding: 6px 14px; border-radius: 6px; transition: 0.2s; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; height: 32px; }
         .btn-reschedule:hover { background: #f3f4f6; }
-        .btn-cancel { border: 1px solid #fee2e2; color: #ef4444; font-size: 13px; font-weight: 500; padding: 6px 14px; border-radius: 6px; transition: 0.2s; text-decoration: none; }
+        .btn-cancel { border: 1px solid #fee2e2; color: #ef4444; font-size: 13px; font-weight: 500; padding: 6px 14px; border-radius: 6px; transition: 0.2s; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; height: 32px;}
         .btn-cancel:hover { background: #fef2f2; border-color: #fca5a5; }
-        .btn-pay { border: 1px solid #bfdbfe; color: #2563eb; background: #eff6ff; font-size: 13px; font-weight: 600; padding: 6px 14px; border-radius: 6px; transition: 0.2s; text-decoration: none; }
+        .btn-pay { border: 1px solid #bfdbfe; color: #2563eb; background: #eff6ff; font-size: 13px; font-weight: 600; padding: 6px 14px; border-radius: 6px; transition: 0.2s; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; height: 32px;}
         .btn-pay:hover { background: #3b82f6; color: #fff; }
 
         .sidebar-active { background-color: #eff6ff; color: #2563eb; border-left: 4px solid #2563eb; font-weight: 600; }
@@ -206,12 +230,26 @@ $available_slots = ['09:00', '10:30', '13:30', '15:00'];
                             </td>
                             <td class="flex items-center gap-3">
                                 <?php if($appt['fee_status'] == 'Unpaid'): ?>
-                                    <a href="?pay_id=<?php echo $appt['appointment_id']; ?>" class="btn-pay">Pay Now</a>
+                                    <a href="?pay_id=<?php echo $appt['appointment_id']; ?>" class="btn-pay"><i class="fa-brands fa-cc-visa mr-1"></i> Pay Now</a>
                                 <?php endif; ?>
                                 
                                 <?php if($appt['status'] == 'Scheduled'): ?>
                                     <a href="?reschedule_id=<?php echo $appt['appointment_id']; ?>" class="btn-reschedule">Reschedule</a>
-                                    <a href="?cancel_id=<?php echo $appt['appointment_id']; ?>" onclick="return confirm('Are you sure you want to cancel?')" class="btn-cancel">Cancel</a>
+                                    
+                                    <?php 
+                                        // KIỂM TRA THỜI GIAN ĐỂ HIỂN THỊ NÚT CANCEL
+                                        date_default_timezone_set('Asia/Ho_Chi_Minh');
+                                        $now = new DateTime();
+                                        $apptDateTime = new DateTime($appt['appointment_date'] . ' ' . $appt['appointment_time']);
+                                        $intervalMinutes = ($apptDateTime->getTimestamp() - $now->getTimestamp()) / 60;
+                                        
+                                        if ($intervalMinutes >= 120): // Còn hơn 2 tiếng
+                                    ?>
+                                        <a href="?cancel_id=<?php echo $appt['appointment_id']; ?>" onclick="return confirm('Bạn có chắc chắn muốn hủy lịch khám này không?')" class="btn-cancel">Cancel</a>
+                                    <?php else: // Dưới 2 tiếng -> Khóa nút ?>
+                                        <span class="border border-gray-200 bg-gray-50 text-gray-400 font-medium text-[11px] uppercase tracking-widest px-3 py-1 rounded-md cursor-not-allowed flex items-center justify-center h-[32px]" title="Không thể hủy lịch khi giờ khám chỉ còn dưới 2 tiếng"><i class="fa-solid fa-lock mr-1"></i> Locked</span>
+                                    <?php endif; ?>
+
                                 <?php endif; ?>
                             </td>
                         </tr>

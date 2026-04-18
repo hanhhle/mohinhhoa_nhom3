@@ -10,7 +10,8 @@ $patientAvatar = (!empty($_SESSION['avatar']) && $_SESSION['avatar'] != 'default
 
 $completed = [];
 try {
-    $stmt = $pdo->prepare("SELECT a.*, u_d.full_name as doctor_name FROM Appointments a JOIN Users u_d ON a.doctor_id = u_d.user_id WHERE a.patient_id = ? AND a.status = 'Completed' ORDER BY a.appointment_date DESC, a.appointment_time DESC");
+    // SỬA: Lấy cả lịch 'Completed' và 'Cancelled'
+    $stmt = $pdo->prepare("SELECT a.*, u_d.full_name as doctor_name FROM Appointments a JOIN Users u_d ON a.doctor_id = u_d.user_id WHERE a.patient_id = ? AND a.status IN ('Completed', 'Cancelled') ORDER BY a.appointment_date DESC, a.appointment_time DESC");
     $stmt->execute([$patientId]);
     $completed = $stmt->fetchAll();
 } catch (PDOException $e) {}
@@ -30,7 +31,7 @@ try {
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #1f2937; }
 
-        /* MAIN CONTENT CSS (Giữ nguyên cho phần bảng bên phải) */
+        /* MAIN CONTENT CSS */
         .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
         .topbar-wrapper { padding: 32px 40px 0 40px; }
         .topbar { 
@@ -139,22 +140,32 @@ try {
                 </thead>
                 <tbody>
                 <?php if(empty($completed)): ?>
-                    <tr><td colspan="5" style="text-align:center; padding:40px; color:#9ca3af; font-style: italic;">No completed appointments yet.</td></tr>
+                    <tr><td colspan="5" style="text-align:center; padding:40px; color:#9ca3af; font-style: italic;">No completed or cancelled appointments yet.</td></tr>
                 <?php else: ?>
                     <?php foreach($completed as $row): ?>
-                    <tr>
-                        <td style="font-weight: 500; color: #4b5563;"><?php echo date('h:i A', strtotime($row['appointment_time'])); ?></td>
-                        <td><?php echo date('d/m/Y', strtotime($row['appointment_date'])); ?></td>
+                    <tr class="<?php echo $row['status'] == 'Cancelled' ? 'opacity-70 bg-gray-50' : ''; ?>">
+                        <td style="font-weight: 500; color: #4b5563; <?php echo $row['status'] == 'Cancelled' ? 'text-decoration: line-through;' : ''; ?>">
+                            <?php echo date('h:i A', strtotime($row['appointment_time'])); ?>
+                        </td>
+                        <td class="<?php echo $row['status'] == 'Cancelled' ? 'text-decoration: line-through;' : ''; ?>">
+                            <?php echo date('d/m/Y', strtotime($row['appointment_date'])); ?>
+                        </td>
                         <td style="font-weight: 500;">Dr. <?php echo htmlspecialchars($row['doctor_name']); ?></td>
                         <td>
-                            <?php if($row['fee_status'] == 'Paid'): ?>
+                            <?php if($row['status'] == 'Cancelled'): ?>
+                                <span class="text-gray-400 font-medium text-[11px] uppercase tracking-widest"><i class="fa-solid fa-minus"></i></span>
+                            <?php elseif($row['fee_status'] == 'Paid'): ?>
                                 <span class="link-green">Paid</span>
                             <?php else: ?>
                                 <span class="badge-unpaid">Unpaid</span>
                             <?php endif; ?>
                         </td>
                         <td>
-                            <?php if($row['fee_status'] == 'Unpaid'): ?>
+                            <?php if($row['status'] == 'Cancelled'): ?>
+                                <span class="bg-red-50 text-red-500 font-bold px-3 py-1.5 rounded-lg border border-red-100 text-[11px] uppercase tracking-widest flex items-center gap-1.5 w-max">
+                                    <i class="fa-solid fa-ban"></i> Cancelled
+                                </span>
+                            <?php elseif($row['fee_status'] == 'Unpaid'): ?>
                                 <a href="pat_payment.php?appt_id=<?php echo $row['appointment_id']; ?>" style="color:#3b82f6; font-weight:600; text-decoration:none; padding: 6px 12px; border-radius: 6px; transition: 0.2s;" onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background='transparent'">Pay Now</a>
                             <?php else: ?>
                                 <span style="color:#9ca3af; font-size: 13px;">No action needed</span>

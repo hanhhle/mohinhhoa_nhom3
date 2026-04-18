@@ -10,7 +10,7 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Admin') {
 $adminName = $_SESSION['name'];
 
 // Fix đường dẫn ảnh Admin
-$adminAvatar = (!empty($_SESSION['avatar'])) ? $_SESSION['avatar'] : 'img/default_admin.png';
+$adminAvatar = (!empty($_SESSION['avatar']) && $_SESSION['avatar'] != 'default.png') ? $_SESSION['avatar'] : 'img/default_admin.png';
 
 $search = isset($_GET['search']) ? "%".$_GET['search']."%" : "%";
 $filterDate = isset($_GET['date']) && !empty($_GET['date']) ? $_GET['date'] : null;
@@ -19,7 +19,14 @@ $msg = "";
 $available_slots = ['09:00', '10:30', '13:30', '15:00'];
 
 // ==========================================
-// 1. XỬ LÝ HỦY LỊCH HẸN (CANCEL)
+// 0. AUTO-CLEAN: TỰ ĐỘNG ĐÁNH DẤU BÙNG LỊCH QUÁ 1 TIẾNG
+// ==========================================
+try {
+    $pdo->exec("UPDATE Appointments SET status = 'Cancelled' WHERE status = 'Scheduled' AND CONCAT(appointment_date, ' ', appointment_time) < DATE_SUB(NOW(), INTERVAL 1 HOUR)");
+} catch (PDOException $e) {}
+
+// ==========================================
+// 1. XỬ LÝ HỦY LỊCH HẸN (CANCEL TỰ DO)
 // ==========================================
 if (isset($_GET['cancel_id'])) {
     $c_id = $_GET['cancel_id'];
@@ -33,16 +40,31 @@ if (isset($_GET['cancel_id'])) {
 }
 
 // ==========================================
-// 2. XỬ LÝ CẬP NHẬT DỜI LỊCH (RESCHEDULE POST)
+// 1.5. XỬ LÝ XÁC NHẬN ĐÃ THU TIỀN MẶT (MARK AS PAID)
+// ==========================================
+if (isset($_GET['mark_paid_id'])) {
+    $p_id = $_GET['mark_paid_id'];
+    try {
+        $stmtPaid = $pdo->prepare("UPDATE Appointments SET fee_status = 'Paid' WHERE appointment_id = ?");
+        $stmtPaid->execute([$p_id]);
+        $msg = "<div class='bg-emerald-50 text-emerald-600 p-4 rounded-xl mb-6 border border-emerald-200 text-sm font-medium flex items-center gap-2 shadow-sm'><i class='fa-solid fa-hand-holding-dollar'></i> Xác nhận thu tiền mặt thành công! Bệnh nhân đã có thể vào phòng khám.</div>";
+    } catch (PDOException $e) {
+        $msg = "<div class='bg-red-50 text-red-600 p-4 rounded-xl mb-6 border border-red-200 text-sm font-medium'>Error: " . $e->getMessage() . "</div>";
+    }
+}
+
+// ==========================================
+// 2. XỬ LÝ CẬP NHẬT DỜI LỊCH (RESCHEDULE POST CÓ ĐỔI BÁC SĨ)
 // ==========================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_reschedule'])) {
     $r_id = $_POST['reschedule_appt_id'];
     $n_date = $_POST['new_date'];
     $n_time = $_POST['new_time'];
+    $n_doc  = $_POST['new_doc']; // Nhận ID bác sĩ mới
 
     try {
-        $stmtUp = $pdo->prepare("UPDATE Appointments SET appointment_date = ?, appointment_time = ? WHERE appointment_id = ?");
-        $stmtUp->execute([$n_date, $n_time, $r_id]);
+        $stmtUp = $pdo->prepare("UPDATE Appointments SET appointment_date = ?, appointment_time = ?, doctor_id = ? WHERE appointment_id = ?");
+        $stmtUp->execute([$n_date, $n_time, $n_doc, $r_id]);
         header("Location: adm_appointments.php?success=rescheduled");
         exit();
     } catch (PDOException $e) {
@@ -62,15 +84,19 @@ if (isset($_GET['success']) && $_GET['success'] == 'created') {
 // ==========================================
 $reschedule_id = isset($_GET['reschedule_id']) ? $_GET['reschedule_id'] : null;
 $selected_date = isset($_GET['new_date']) ? $_GET['new_date'] : null;
+$selected_doc = isset($_GET['new_doc']) ? $_GET['new_doc'] : null;
 $rescheduleData = null;
 $booked_slots = [];
+$all_doctors_reschedule = [];
 
 if ($reschedule_id) {
     try {
+        // Lấy danh sách bác sĩ cho Dropdown Modal
+        $all_doctors_reschedule = $pdo->query("SELECT user_id, full_name FROM Users WHERE role = 'Doctor' ORDER BY full_name ASC")->fetchAll();
+
         $stmtRes = $pdo->prepare("
-            SELECT a.*, u_d.full_name as doctor_name, u_p.full_name as patient_name 
+            SELECT a.*, u_p.full_name as patient_name 
             FROM Appointments a 
-            JOIN Users u_d ON a.doctor_id = u_d.user_id 
             JOIN Users u_p ON a.patient_id = u_p.user_id
             WHERE a.appointment_id = ?
         ");
@@ -79,8 +105,11 @@ if ($reschedule_id) {
 
         if ($rescheduleData) {
             if (!$selected_date) $selected_date = $rescheduleData['appointment_date'];
-            $stmtCheck = $pdo->prepare("SELECT appointment_time FROM Appointments WHERE doctor_id = ? AND appointment_date = ? AND status != 'Cancelled' AND appointment_id != ?");
-            $stmtCheck->execute([$rescheduleData['doctor_id'], $selected_date, $reschedule_id]);
+            if (!$selected_doc) $selected_doc = $rescheduleData['doctor_id'];
+
+            // Check giờ trống dựa trên Bác sĩ đang được chọn trong Modal
+            $stmtCheck = $pdo->prepare("SELECT appointment_time FROM Appointments WHERE doctor_id = ? AND appointment_date = ? AND status != 'Cancelled' AND status != 'No-Show' AND appointment_id != ?");
+            $stmtCheck->execute([$selected_doc, $selected_date, $reschedule_id]);
             while ($row = $stmtCheck->fetch()) { 
                 $booked_slots[] = date('H:i', strtotime($row['appointment_time'])); 
             }
@@ -98,14 +127,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_appointment'])
     $new_time = $_POST['appt_time'];
 
     try {
-        $pdo->beginTransaction(); // Bắt đầu Transaction
+        $pdo->beginTransaction();
         $new_p_id = null;
 
         if ($patient_type === 'existing') {
             $new_p_id = $_POST['patient_id'];
             if (empty($new_p_id)) throw new Exception("Please select an existing patient.");
         } else {
-            // Xử lý tạo Bệnh nhân mới
             $full_name = trim($_POST['new_full_name']);
             $phone = trim($_POST['new_phone']);
             $email = trim($_POST['new_email']);
@@ -116,33 +144,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_appointment'])
                 throw new Exception("Please fill in all required fields for the new patient.");
             }
 
-            // Kiểm tra Email trùng
             $stmtCheckMail = $pdo->prepare("SELECT user_id FROM Users WHERE email = ?");
             $stmtCheckMail->execute([$email]);
             if ($stmtCheckMail->rowCount() > 0) {
                 throw new Exception("Email '$email' is already registered! Please use 'Existing Patient' tab.");
             }
 
-            // Tạo User mới (Mật khẩu mặc định: 123456)
             $default_pw = password_hash('123456', PASSWORD_DEFAULT);
             $stmtUser = $pdo->prepare("INSERT INTO Users (full_name, email, password_hash, role, is_active) VALUES (?, ?, ?, 'Patient', 1)");
             $stmtUser->execute([$full_name, $email, $default_pw]);
             $new_p_id = $pdo->lastInsertId();
 
-            // Tạo Patient Profile
             $stmtProf = $pdo->prepare("INSERT INTO Patient_Profiles (patient_id, date_of_birth, gender, phone_number) VALUES (?, ?, ?, ?)");
             $stmtProf->execute([$new_p_id, $dob, $gender, $phone]);
         }
 
-        // Tạo Appointment
         $stmtNew = $pdo->prepare("INSERT INTO Appointments (patient_id, doctor_id, appointment_date, appointment_time, status, fee_status) VALUES (?, ?, ?, ?, 'Scheduled', 'Unpaid')");
         $stmtNew->execute([$new_p_id, $new_d_id, $new_date, $new_time]);
 
-        $pdo->commit(); // Xác nhận Transaction
+        $pdo->commit();
         header("Location: adm_appointments.php?success=created");
         exit();
     } catch (Exception $e) {
-        if ($pdo->inTransaction()) { $pdo->rollBack(); } // Hủy nếu lỗi
+        if ($pdo->inTransaction()) { $pdo->rollBack(); } 
         $msg = "<div class='bg-red-50 text-red-600 p-4 rounded-xl mb-6 border border-red-200 text-sm font-medium'><i class='fa-solid fa-circle-exclamation'></i> " . $e->getMessage() . "</div>";
     }
 }
@@ -163,7 +187,7 @@ if ($is_new_appt) {
         $all_doctors = $pdo->query("SELECT u.user_id, u.full_name, dp.speciality FROM Users u JOIN Doctor_Profiles dp ON u.user_id = dp.doctor_id WHERE u.role = 'Doctor' ORDER BY u.full_name ASC")->fetchAll();
 
         if ($sel_doc && $sel_date) {
-            $stmtCheckNew = $pdo->prepare("SELECT appointment_time FROM Appointments WHERE doctor_id = ? AND appointment_date = ? AND status != 'Cancelled'");
+            $stmtCheckNew = $pdo->prepare("SELECT appointment_time FROM Appointments WHERE doctor_id = ? AND appointment_date = ? AND status = 'Scheduled'");
             $stmtCheckNew->execute([$sel_doc, $sel_date]);
             while ($row = $stmtCheckNew->fetch()) { 
                 $new_booked_slots[] = date('H:i', strtotime($row['appointment_time'])); 
@@ -176,10 +200,9 @@ if ($is_new_appt) {
 // 5. LẤY DANH SÁCH LỊCH HẸN
 // ==========================================
 try {
-    $sql = "SELECT a.*, u_p.full_name as p_name, u_p.avatar_url as p_avatar, u_d.full_name as d_name, pp.date_of_birth 
+    $sql = "SELECT a.*, u_p.full_name as p_name, u_p.avatar_url as p_avatar, u_d.full_name as d_name 
             FROM Appointments a 
             JOIN Users u_p ON a.patient_id = u_p.user_id 
-            JOIN Patient_Profiles pp ON u_p.user_id = pp.patient_id 
             JOIN Users u_d ON a.doctor_id = u_d.user_id 
             WHERE a.status = 'Scheduled' AND u_p.full_name LIKE ?";
     $params = [$search];
@@ -195,11 +218,6 @@ try {
     $appointments = $stmt->fetchAll();
 } catch (PDOException $e) {
     die("<div style='color:red; padding:20px; background:#fee2e2; border:1px solid #ef4444; margin:20px;'><b>Lỗi DB:</b> " . $e->getMessage() . "</div>");
-}
-
-function calculateAge($birthDate) { 
-    if(!$birthDate) return "N/A";
-    return date_diff(date_create($birthDate), date_create('today'))->y; 
 }
 ?>
 
@@ -309,12 +327,12 @@ function calculateAge($birthDate) {
                     <table class="w-full text-left text-sm mt-4">
                         <thead class="text-gray-400 border-b border-gray-100 uppercase text-[11px] tracking-widest">
                             <tr>
-                                <th class="py-4 font-semibold w-[15%]">Time</th>
-                                <th class="py-4 font-semibold w-[15%]">Date</th>
-                                <th class="py-4 font-semibold w-[25%]">Patient Name</th>
-                                <th class="py-4 font-semibold w-[10%] text-center">Age</th>
-                                <th class="py-4 font-semibold w-[20%]">Doctor</th>
-                                <th class="py-4 font-semibold w-[15%] text-right pr-4">Action</th>
+                                <th class="py-4 font-semibold w-[12%]">Time</th>
+                                <th class="py-4 font-semibold w-[12%]">Date</th>
+                                <th class="py-4 font-semibold w-[22%]">Patient Name</th>
+                                <th class="py-4 font-semibold w-[18%]">Doctor</th>
+                                <th class="py-4 font-semibold w-[16%] text-center">Payment</th>
+                                <th class="py-4 font-semibold w-[20%] text-right pr-4">Action</th>
                             </tr>
                         </thead>
                         <tbody class="text-gray-600">
@@ -325,7 +343,6 @@ function calculateAge($birthDate) {
                                     <?php 
                                         $timeFormatted = date("h:i A", strtotime($app['appointment_time']));
                                         $dateFormatted = date("d/m/Y", strtotime($app['appointment_date']));
-                                        $age = calculateAge($app['date_of_birth']);
                                         $nameParts = explode(' ', trim($app['p_name']));
                                         $initials = strtoupper(substr($nameParts[0], 0, 1));
                                         if (count($nameParts) > 1) { $initials .= strtoupper(substr(end($nameParts), 0, 1)); }
@@ -341,11 +358,30 @@ function calculateAge($birthDate) {
                                                 <span class="text-gray-800 font-medium text-sm"><?php echo htmlspecialchars($app['p_name']); ?></span>
                                             </div>
                                         </td>
-                                        <td class="py-4 text-gray-500 text-sm text-center font-medium"><?php echo $age; ?></td>
                                         <td class="py-4 text-gray-600 text-sm font-medium">Dr. <?php echo htmlspecialchars($app['d_name']); ?> </td>
+                                        
+                                        <td class="py-4 text-center">
+                                            <?php if($app['fee_status'] == 'Paid'): ?>
+                                                <span class="bg-emerald-100 text-emerald-600 text-[10px] font-bold px-3 py-1.5 rounded-full uppercase tracking-wider border border-emerald-200 shadow-sm">Paid</span>
+                                            <?php else: ?>
+                                                <span class="bg-red-50 text-red-500 text-[10px] font-bold px-3 py-1.5 rounded-full uppercase tracking-wider border border-red-100">Unpaid</span>
+                                            <?php endif; ?>
+                                        </td>
+
                                         <td class="py-4 text-right pr-4">
-                                            <div class="flex items-center justify-end gap-4">
+                                            <div class="flex items-center justify-end gap-3">
+                                                
+                                                <?php if($app['fee_status'] == 'Unpaid'): ?>
+                                                    <a href="?mark_paid_id=<?php echo $app['appointment_id']; ?>&search=<?php echo urlencode($_GET['search'] ?? ''); ?>&date=<?php echo urlencode($_GET['date'] ?? ''); ?>" 
+                                                       onclick="return confirm('Xác nhận bệnh nhân đã thanh toán tiền mặt và được phép vào khám?')"
+                                                       class="text-emerald-500 hover:text-white hover:bg-emerald-500 border border-emerald-200 bg-emerald-50 text-[10px] px-3 py-1.5 rounded-lg font-bold uppercase tracking-widest transition-all shadow-sm flex items-center gap-1"
+                                                       title="Xác nhận Đã thu tiền mặt">
+                                                        <i class="fa-solid fa-check"></i> Pay
+                                                    </a>
+                                                <?php endif; ?>
+
                                                 <a href="?reschedule_id=<?php echo $app['appointment_id']; ?>&search=<?php echo urlencode($_GET['search'] ?? ''); ?>&date=<?php echo urlencode($_GET['date'] ?? ''); ?>" class="text-blue-500 text-[11px] font-extrabold uppercase tracking-widest hover:text-blue-700 transition-colors">RESCHEDULE</a>
+                                                
                                                 <a href="?cancel_id=<?php echo $app['appointment_id']; ?>&search=<?php echo urlencode($_GET['search'] ?? ''); ?>&date=<?php echo urlencode($_GET['date'] ?? ''); ?>" onclick="return confirm('Bạn có chắc chắn muốn hủy lịch hẹn này không?')" class="w-8 h-8 flex items-center justify-center bg-red-50 text-red-500 border border-red-100 rounded-lg hover:bg-red-500 hover:text-white transition-colors shadow-sm" title="Cancel Appointment">
                                                     <i class="fa-solid fa-xmark"></i>
                                                 </a>
@@ -372,32 +408,38 @@ function calculateAge($birthDate) {
             <form method="POST" class="p-8">
                 <input type="hidden" name="reschedule_appt_id" value="<?php echo $rescheduleData['appointment_id']; ?>">
                 
-                <div class="mb-6 bg-blue-50 border border-blue-100 rounded-xl p-4 flex justify-between items-center">
-                    <div>
+                <div class="mb-6 bg-blue-50 border border-blue-100 rounded-xl p-4 flex justify-between items-center gap-4">
+                    <div class="flex-1">
                         <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Patient</p>
                         <p class="font-bold text-gray-800 text-sm"><?php echo htmlspecialchars($rescheduleData['patient_name']); ?></p>
                     </div>
-                    <div class="text-right">
-                        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Doctor</p>
-                        <p class="font-bold text-[#003366] text-sm">Dr. <?php echo htmlspecialchars($rescheduleData['doctor_name']); ?></p>
+                    
+                    <div class="flex-1 text-right">
+                        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">1. Change Doctor</p>
+                        <select name="new_doc" class="w-full text-right bg-transparent border-b border-blue-200 focus:border-blue-500 outline-none font-bold text-[#003366] text-sm pb-1 cursor-pointer transition-colors"
+                                onchange="window.location.href='?reschedule_id=<?php echo $reschedule_id; ?>&search=<?php echo urlencode($_GET['search'] ?? ''); ?>&date=<?php echo urlencode($_GET['date'] ?? ''); ?>&new_date=<?php echo htmlspecialchars($selected_date); ?>&new_doc=' + this.value">
+                            <?php foreach($all_doctors_reschedule as $d): ?>
+                                <option value="<?php echo $d['user_id']; ?>" <?php echo $selected_doc == $d['user_id'] ? 'selected' : ''; ?>>Dr. <?php echo htmlspecialchars($d['full_name']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
                     </div>
                 </div>
 
                 <div class="mb-6">
-                    <label class="block text-[11px] font-bold text-gray-600 mb-2 uppercase tracking-widest">1. Pick New Date</label>
+                    <label class="block text-[11px] font-bold text-gray-600 mb-2 uppercase tracking-widest">2. Pick New Date</label>
                     <input type="date" name="new_date" required min="<?php echo date('Y-m-d'); ?>" 
                            value="<?php echo htmlspecialchars($selected_date); ?>"
-                           onchange="window.location.href='?reschedule_id=<?php echo $reschedule_id; ?>&search=<?php echo urlencode($_GET['search'] ?? ''); ?>&date=<?php echo urlencode($_GET['date'] ?? ''); ?>&new_date=' + this.value"
+                           onchange="window.location.href='?reschedule_id=<?php echo $reschedule_id; ?>&search=<?php echo urlencode($_GET['search'] ?? ''); ?>&date=<?php echo urlencode($_GET['date'] ?? ''); ?>&new_doc=<?php echo htmlspecialchars($selected_doc); ?>&new_date=' + this.value"
                            class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:border-blue-500 outline-none bg-gray-50 font-medium transition-all">
                 </div>
 
                 <div class="mb-8">
-                    <label class="block text-[11px] font-bold text-gray-600 mb-3 uppercase tracking-widest">2. Select Available Time</label>
+                    <label class="block text-[11px] font-bold text-gray-600 mb-3 uppercase tracking-widest">3. Select Available Time</label>
                     <div class="grid grid-cols-2 gap-3">
                         <?php foreach($available_slots as $time): ?>
                             <?php 
                             $is_booked = in_array($time, $booked_slots); 
-                            $is_current = (date('H:i', strtotime($rescheduleData['appointment_time'])) == $time && $selected_date == $rescheduleData['appointment_date']);
+                            $is_current = (date('H:i', strtotime($rescheduleData['appointment_time'])) == $time && $selected_date == $rescheduleData['appointment_date'] && $selected_doc == $rescheduleData['doctor_id']);
                             ?>
                             <label class="relative cursor-pointer">
                                 <input type="radio" name="new_time" value="<?php echo $time; ?>:00" class="peer hidden" <?php echo $is_booked ? 'disabled' : ''; ?> <?php echo $is_current ? 'checked' : ''; ?> required>

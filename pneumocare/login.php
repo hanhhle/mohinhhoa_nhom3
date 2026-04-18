@@ -39,21 +39,32 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $email = trim($_POST['email']);
     $password = $_POST['password'];
 
-    // Truy vấn kiểm tra User
-    $stmt = $pdo->prepare("SELECT * FROM Users WHERE email = ? AND is_active = 1");
+    // SỬA: Lấy dữ liệu User trước, KHÔNG ép điều kiện is_active = 1 ở SQL nữa
+    // Để chúng ta có thể biết lý do vì sao họ không đăng nhập được (sai pass hay bị khóa)
+    $stmt = $pdo->prepare("SELECT * FROM Users WHERE email = ?");
     $stmt->execute([$email]);
     $user = $stmt->fetch();
 
     if ($user && password_verify($password, $user['password_hash'])) {
-        // Bảo mật: Đổi ID session sau khi login thành công
-        session_regenerate_id(true);
+        
+        // ==========================================
+        // XỬ LÝ CHẶN ĐĂNG NHẬP DỰA TRÊN TRẠNG THÁI
+        // ==========================================
+        if ($user['role'] === 'Patient' && $user['is_active'] == 2) {
+            $error = "Tài khoản của bạn đã bị khóa do vi phạm quy định (VD: Bỏ lịch hẹn nhiều lần). Vui lòng liên hệ Admin.";
+        } elseif ($user['is_active'] == 0) {
+            $error = "Tài khoản của bạn đã bị vô hiệu hóa.";
+        } else {
+            // Đăng nhập thành công
+            session_regenerate_id(true);
 
-        $_SESSION['user_id'] = $user['user_id'];
-        $_SESSION['name'] = $user['full_name'];
-        $_SESSION['role'] = $user['role'];
-        $_SESSION['avatar'] = (!empty($user['avatar_url'])) ? $user['avatar_url'] : 'img/default_admin.png';
-        // Điều hướng đến Dashboard tương ứng
-        redirectByRole($user['role']);
+            $_SESSION['user_id'] = $user['user_id'];
+            $_SESSION['name'] = $user['full_name'];
+            $_SESSION['role'] = $user['role'];
+            $_SESSION['avatar'] = (!empty($user['avatar_url'])) ? $user['avatar_url'] : 'img/default_admin.png';
+            
+            redirectByRole($user['role']);
+        }
     } else {
         $error = "Email hoặc mật khẩu không chính xác!";
     }
@@ -64,7 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pneumo-Care a| Login</title>
+    <title>Pneumo-Care | Login</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
@@ -99,7 +110,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 <div class="mb-8">
                     <h1 class="text-4xl font-bold text-gray-900 leading-none mb-2">Welcome Back To<br>Pneumo-Care 👋</h1>
                     <?php if($error): ?>
-                        <p class="text-red-500 font-medium mt-2"><?php echo htmlspecialchars($error); ?></p>
+                        <div class="bg-red-50 text-red-600 border border-red-200 px-4 py-3 rounded-xl text-sm font-medium mt-4">
+                            <i class="fa-solid fa-circle-exclamation mr-1"></i> <?php echo htmlspecialchars($error); ?>
+                        </div>
                     <?php endif; ?>
                 </div>
 
