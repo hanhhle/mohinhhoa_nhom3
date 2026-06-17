@@ -6,7 +6,6 @@
 session_start();
 require 'db.php';
 
-// Ép PHP hiển thị lỗi để dễ dàng sửa chữa
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
@@ -18,22 +17,40 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Admin') {
 }
 
 $adminName = $_SESSION['name'];
-// Xử lý ảnh Admin
-$adminAvatar = (!empty($_SESSION['avatar']) && $_SESSION['avatar'] != 'default.png') ? $_SESSION['avatar'] : 'img/default_admin.png';
 
+// Xử lý ảnh Admin đơn giản: Chỉ lấy tên file, nếu không có thì gán 'default.png'
+function getInitials($fullName) {
+    // Cắt tên thành mảng các từ
+    $words = explode(' ', trim($fullName));
+    $count = count($words);
+    
+    if ($count >= 2) {
+        // Lấy chữ cái đầu của 2 từ cuối cùng (VD: Nguyễn Minh Tiến -> M T, Hương Giang -> H G)
+        $first = mb_substr($words[$count - 2], 0, 1, 'UTF-8');
+        $second = mb_substr($words[$count - 1], 0, 1, 'UTF-8');
+        return mb_strtoupper($first . $second, 'UTF-8');
+    } elseif ($count == 1) {
+        // Nếu tên chỉ có 1 chữ
+        return mb_strtoupper(mb_substr($words[0], 0, 1, 'UTF-8'), 'UTF-8');
+    }
+    return '?';
+}
+
+// Random màu nền cho avatar của từng bệnh nhân dựa trên độ dài tên
+function getAvatarColor($fullName) {
+    $colors = ['bg-blue-500', 'bg-red-500', 'bg-green-500', 'bg-yellow-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-teal-500'];
+    $index = strlen($fullName) % count($colors);
+    return $colors[$index];
+}
 // 2. Khởi tạo biến mặc định
 $totalAppointments = 0;
 $newPatients = 0;
-$labTests = 50; // Giá trị Demo theo code cũ của bạn
 $newAppointmentsList = [];
 $pendingFees = [];
 
 try {
-    // Lấy số liệu Tổng quan (Chỉ đếm các lịch hẹn ở trạng thái Scheduled)
     $totalAppointments = $pdo->query("SELECT COUNT(*) FROM Appointments WHERE status = 'Scheduled'")->fetchColumn();
 
-    // Lấy số bệnh nhân mới trong 30 ngày (Giả định bạn có cột created_at trong bảng Users)
-    // Nếu bảng Users không có created_at, ta chỉ đếm tổng số Patient
     $checkColumn = $pdo->query("SHOW COLUMNS FROM Users LIKE 'created_at'")->rowCount();
     if ($checkColumn > 0) {
         $newPatients = $pdo->query("SELECT COUNT(*) FROM Users WHERE role = 'Patient' AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)")->fetchColumn();
@@ -41,7 +58,6 @@ try {
         $newPatients = $pdo->query("SELECT COUNT(*) FROM Users WHERE role = 'Patient'")->fetchColumn();
     }
 
-    // Lấy danh sách Upcoming Appointments (5 lịch gần nhất)
     $stmtAppt = $pdo->query("
         SELECT a.appointment_time, a.appointment_date, 
                u_p.full_name as patient_name, u_p.avatar_url as p_avatar,
@@ -55,7 +71,6 @@ try {
     ");
     $newAppointmentsList = $stmtAppt->fetchAll();
 
-    // Lấy danh sách Patient Fee Pending (Gom nhóm theo Bệnh nhân)
     $stmtFee = $pdo->query("
         SELECT u_p.full_name as patient_name, u_p.avatar_url, u_p.user_id, COUNT(a.appointment_id) as unpaid_bills
         FROM Appointments a
@@ -78,34 +93,20 @@ try {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pneumo-Care | Admin Dashboard</title>
-    
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Inter', sans-serif; background-color: #f4f7fa; color: #1f2937; }
-
         .layout { display: flex; min-height: 100vh; overflow: hidden; }
-        
-        /* SIDEBAR CHUẨN ĐỒNG BỘ */
         .sidebar { width: 260px; background: #ffffff; border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; min-height: 100vh; flex-shrink: 0; z-index: 10; }
         .sidebar-active { background-color: #eff6ff; color: #2563eb; border-left: 4px solid #2563eb; font-weight: 600; }
-
-        /* MAIN CONTENT */
         .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
         .topbar-wrapper { padding: 32px 40px 0 40px; }
-        .topbar { 
-            height: 72px; background: #ffffff; border: 1px solid #f3f4f6; 
-            display: flex; align-items: center; justify-content: space-between; 
-            padding: 0 24px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
-            margin-bottom: 24px;
-        }
+        .topbar { height: 72px; background: #ffffff; border: 1px solid #f3f4f6; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 24px; }
         .topbar h1 { font-size: 22px; font-weight: 600; color: #1f2937; margin: 0; }
         .content-area { padding: 0 40px 40px 40px; flex: 1; overflow-y: auto; }
-
-        /* Scrollbar */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
@@ -155,7 +156,7 @@ try {
                             <p class="text-sm font-semibold text-gray-800" style="line-height: 1.2;"><?php echo htmlspecialchars($adminName); ?></p>
                             <p class="text-xs text-gray-500 font-medium">Administrator</p>
                         </div>
-                        <img src="<?php echo $adminAvatar; ?>" class="w-10 h-10 rounded-full object-cover border border-gray-200 shadow-sm" alt="Admin">
+                        <img src="<?php echo $adminAvatar; ?>" onerror="this.onerror=null; this.src='default.png';" class="w-10 h-10 rounded-full object-cover border border-gray-200 shadow-sm bg-white" alt="Admin">
                     </div>
                 </div>
             </header>
@@ -213,7 +214,8 @@ try {
                                             <td class="py-4 font-medium text-gray-500"><?php echo date('d/m/Y', strtotime($appt['appointment_date'])); ?></td>
                                             <td class="py-4">
                                                 <div class="flex items-center gap-3">
-                                                    <img src="<?php echo $appt['p_avatar'] ?: 'img/default.png'; ?>" class="w-8 h-8 rounded-full object-cover border border-gray-100 shadow-sm">
+                                                    <?php $pAvatar = !empty($appt['p_avatar']) ? basename($appt['p_avatar']) : 'default.png'; ?>
+                                                    <img src="<?php echo $pAvatar; ?>" onerror="this.onerror=null; this.src='default.png';" class="w-8 h-8 rounded-full object-cover border border-gray-100 shadow-sm bg-white">
                                                     <span class="font-bold text-gray-800"><?php echo htmlspecialchars($appt['patient_name']); ?></span>
                                                 </div>
                                             </td>
@@ -245,7 +247,8 @@ try {
                                     <?php foreach ($pendingFees as $fee): ?>
                                     <div class="flex justify-between items-center p-4 border border-gray-100 bg-gray-50/30 hover:bg-red-50/30 hover:border-red-100 rounded-xl transition-all group">
                                         <div class="flex items-center gap-4">
-                                            <img src="<?php echo $fee['avatar_url'] ?: 'img/default.png'; ?>" class="w-10 h-10 rounded-full object-cover border border-white shadow-sm">
+                                            <?php $feeAvatar = !empty($fee['avatar_url']) ? basename($fee['avatar_url']) : 'default.png'; ?>
+                                            <img src="<?php echo $feeAvatar; ?>" onerror="this.onerror=null; this.src='default.png';" class="w-10 h-10 rounded-full object-cover border border-white shadow-sm bg-white">
                                             <div>
                                                 <p class="text-sm font-bold text-gray-800"><?php echo htmlspecialchars($fee['patient_name']); ?></p>
                                                 <p class="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mt-0.5">Owes: <span class="text-red-500 font-bold"><?php echo $fee['unpaid_bills']; ?> bill(s)</span></p>

@@ -97,30 +97,39 @@ function calculateAge($birthDate) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pneumo-Care | Medical Report</title>
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Inter', sans-serif; background-color: #f4f7fa; color: #1f2937; }
-        .layout { display: flex; min-height: 100vh; }
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #1f2937; }
+
+        .layout { display: flex; min-height: 100vh; overflow: hidden; }
         
-        /* SIDEBAR CHUẨN DESIGN BỆNH NHÂN */
+        /* SIDEBAR CHUẨN ĐỒNG BỘ */
         .sidebar { width: 260px; background: #ffffff; border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; min-height: 100vh; flex-shrink: 0; z-index: 10; }
         .sidebar-active { background-color: #eff6ff; color: #2563eb; border-left: 4px solid #2563eb; font-weight: 600; }
 
         /* MAIN CONTENT */
         .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
         .topbar-wrapper { padding: 32px 40px 0 40px; }
-        .topbar { height: 72px; background: #ffffff; border: 1px solid #f3f4f6; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 24px; }
+        .topbar { 
+            height: 72px; background: #ffffff; border: 1px solid #f3f4f6; 
+            display: flex; align-items: center; justify-content: space-between; 
+            padding: 0 24px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
+            margin-bottom: 24px;
+        }
         .topbar h1 { font-size: 22px; font-weight: 600; color: #1f2937; margin: 0; }
         .content-area { padding: 0 40px 40px 40px; flex: 1; overflow-y: auto; }
-
+        
         /* GIAO DIỆN CHUẨN EMR */
         .section-title { display: inline-block; font-size: 16px; font-weight: 700; color: #1f2937; padding-bottom: 8px; border-bottom: 3px solid #3b82f6; margin-bottom: 20px; }
         .blue-border-box { border: 1px solid #bfdbfe; border-radius: 12px; overflow: hidden; background: #ffffff; }
         .blue-border-header { background-color: #eff6ff; padding: 12px 20px; font-size: 14px; font-weight: 600; color: #1e3a8a; border-bottom: 1px solid #bfdbfe; }
 
+        /* Scrollbar */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
@@ -129,33 +138,38 @@ function calculateAge($birthDate) {
 <body class="flex h-screen overflow-hidden text-gray-800">
 <div class="flex w-full h-full relative">
   
-    <aside class="w-64 bg-white border-r border-gray-200 flex flex-col h-full flex-shrink-0 z-10 shadow-sm">
-        <div class="h-[88px] flex items-center px-6 border-b border-gray-100">
-            <svg viewBox="0 0 32 32" fill="none" width="30" height="30" class="mr-3 flex-shrink-0"><ellipse cx="10" cy="18" rx="7" ry="10" fill="#f87171" transform="rotate(-10 10 18)"/><ellipse cx="22" cy="18" rx="7" ry="10" fill="#fca5a5" transform="rotate(10 22 18)"/></svg>
-            <div class="text-[22px] font-bold text-gray-900 tracking-tight">Pneumo-<span class="text-blue-500">Care</span></div>
+    <aside class="w-64 bg-white border-r border-gray-100 flex flex-col h-full shadow-sm z-10">
+        <div class="flex items-center gap-2 p-6 border-b">
+            <i class="fa-solid fa-lungs text-3xl text-red-400"></i>
+            <h1 class="text-xl font-semibold text-gray-700">Pneumo-<span class="text-blue-500">Care</span></h1>
         </div>
 
-        <nav class="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
+        <nav class="flex-1 px-4 py-6 space-y-2">
             <a href="pat_dashboard.php" class="flex items-center gap-4 px-4 py-3 text-gray-500 hover:bg-gray-50 hover:text-gray-800 rounded-xl transition-colors font-medium">
-                <i class="fa-solid fa-gauge-high w-5 text-center text-xl"></i><span>Dashboard</span>
+                <i class="fa-solid fa-gauge-high w-5 text-center text-xl"></i>
+                <span>Dashboard</span>
             </a>
-            <a href="pat_report.php" class="sidebar-active flex items-center gap-4 px-4 py-3 rounded-xl font-semibold transition-colors">
-                <i class="fa-solid fa-file-medical w-5 text-center text-xl"></i><span>Report</span>
+            <a href="pat_report.php" class="sidebar-active flex items-center gap-4 px-4 py-3 rounded-xl transition-colors font-medium">
+                <i class="fa-solid fa-file-medical w-5 text-center text-xl"></i>
+                <span>Report</span>
             </a>
             <a href="pat_appointments.php" class="flex items-center gap-4 px-4 py-3 text-gray-500 hover:bg-gray-50 hover:text-gray-800 rounded-xl transition-colors font-medium">
-                <i class="fa-solid fa-calendar-check w-5 text-center text-xl"></i><span>Appointments</span>
+                <i class="fa-solid fa-calendar-check w-5 text-center text-xl"></i>
+                <span>Appointments</span>
             </a>
             <a href="pat_doctors.php" class="flex items-center gap-4 px-4 py-3 text-gray-500 hover:bg-gray-50 hover:text-gray-800 rounded-xl transition-colors font-medium">
-                <i class="fa-solid fa-user-doctor w-5 text-center text-xl"></i><span>Doctors</span>
+                <i class="fa-solid fa-user-doctor w-5 text-center text-xl"></i>
+                <span>Doctors</span>
             </a>
             <a href="pat_messages.php" class="flex items-center gap-4 px-4 py-3 text-gray-500 hover:bg-gray-50 hover:text-gray-800 rounded-xl transition-colors font-medium">
-                <i class="fa-solid fa-comment-dots w-5 text-center text-xl"></i><span>Messages</span>
+                <i class="fa-solid fa-comment-dots w-5 text-center text-xl"></i>
+                <span>Messages</span>
             </a>
         </nav>
-
-        <div class="p-6 border-t mt-auto border-gray-100">
+        <div class="p-6 border-t mt-auto">
             <a href="logout.php" class="flex items-center gap-4 text-gray-500 hover:text-red-500 transition-colors font-medium">
-                <i class="fa-solid fa-right-from-bracket text-xl"></i><span>Logout</span>
+                <i class="fa-solid fa-right-from-bracket text-lg"></i>
+                <span>Logout</span>
             </a>
         </div>
     </aside>
@@ -163,23 +177,23 @@ function calculateAge($birthDate) {
     <main class="main-content bg-[#f4f7fa]">
         <div class="topbar-wrapper flex-shrink-0">
             <header class="topbar">
-            <h1>My Medical Report</h1>
-            <div class="flex items-center gap-6">
-                <div class="flex items-center gap-3 cursor-pointer">
-                    <div class="text-right hidden sm:block">
-                        <p class="text-sm font-semibold text-gray-800" style="line-height: 1.2;"><?php echo htmlspecialchars($patientName); ?></p>
-                        <p class="text-xs text-gray-500 font-medium">Patient</p>
+                <h1>My Medical Report</h1>
+                <div class="flex items-center gap-6">
+                    <div class="flex items-center gap-3 cursor-pointer">
+                        <div class="text-right hidden sm:block">
+                            <p class="text-sm font-semibold text-gray-800" style="line-height: 1.2;"><?php echo htmlspecialchars($patientName); ?></p>
+                            <p class="text-xs text-gray-500 font-medium">Patient</p>
+                        </div>
+                        <img src="<?php echo $patientAvatar; ?>" class="w-10 h-10 rounded-full object-cover border border-gray-200 shadow-sm" alt="Avatar">
                     </div>
-                    <img src="<?php echo $patientAvatar; ?>" class="w-10 h-10 rounded-full object-cover border border-gray-200 shadow-sm" alt="Avatar">
                 </div>
-            </div>
             </header>
         </div>
 
-        <div class="content-area">
+        <div class="content-area max-w-7xl mx-auto w-full">
             <?php echo $updateMsg; ?>
 
-            <div class="grid grid-cols-1 xl:grid-cols-12 gap-10 max-w-7xl mx-auto w-full">
+            <div class="grid grid-cols-1 xl:grid-cols-12 gap-10 w-full">
                 
                 <div class="xl:col-span-7 space-y-8">
                     

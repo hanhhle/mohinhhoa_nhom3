@@ -77,17 +77,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 <body class="bg-[#f8fafc]">
     <header class="bg-white border-b border-gray-100">
         <div class="max-w-7xl mx-auto px-8 py-5 flex items-center justify-between">
-            <div class="flex items-center gap-x-3">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-9 h-9" viewBox="0 0 24 24" fill="none" stroke="#ec4899" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 4a4 4 0 0 0-4 4v2a4 4 0 0 0 4 4 4 4 0 0 0 4-4V8a4 4 0 0 0-4-4Z"/>
-                    <path d="M8 8v2a4 4 0 0 1-4 4"/><path d="M16 8v2a4 4 0 0 1 4 4"/>
-                    <path d="M12 20v-4"/><path d="M4 12h2"/><path d="M18 12h2"/>
-                </svg>
-                <div class="text-3xl font-bold tracking-tight"><span class="text-gray-900">Pneumo</span><span class="text-[#2563eb]">Care</span></div>
+            <div class="flex items-center gap-2 p-6 border-b">
+                <i class="fa-solid fa-lungs text-3xl text-red-400"></i>
+                <h1 class="text-xl font-semibold text-gray-700">Pneumo-<span class="text-blue-500">Care</span></h1>
             </div>
             <nav class="flex items-center gap-x-9 text-[15px] font-medium">
-                <a href="#" class="text-gray-700 hover:text-gray-900 transition-colors">Home</a>
-                <a href="#" class="text-gray-700 hover:text-gray-900 transition-colors">Contact</a>
                 <a href="register_patient.php" class="text-[#2563eb] font-semibold text-base">Signup</a>
             </nav>
         </div>
